@@ -229,3 +229,28 @@ Key details to adjust in either workflow:
        **Read and write permissions** is enabled if the workflow fails with a
        `403` permission error when pushing to `gh-pages`.
    - Once enabled, the site will be live at `https://<owner>.github.io/<repo>/`.
+
+---
+
+## Step 6: Configure Repository "About" & GitHub Pages Website (Default)
+
+Always populate the GitHub repository's **About** section and enable **Use your
+GitHub Pages website** by default:
+
+1. **Automated via `gh` CLI** (when `gh auth status` is logged in):
+   - Derive a concise one-line description from the project and 3–6 lowercase
+     hyphenated topics (e.g., `vuepress`, `documentation`, plus tech stack tags).
+   - Set `homepage` to the exact GitHub Pages URL (`https://<owner>.github.io/<repo>/`,
+     or `https://<owner>.github.io/` for `<owner>.github.io` repos), which
+     populates the About website link (equivalent to **"Use your GitHub Pages
+     website"**):
+     ```bash
+     gh repo edit <owner>/<repo> \
+       --description "<PROJECT_DESCRIPTION>" \
+       --homepage "https://<owner>.github.io/<repo>/" \
+       --add-topic "vuepress,documentation,<topic3>"
+     ```
+2. **Manual fallback** (if `gh` CLI is unavailable):
+   - On the GitHub repository page, click the gear icon next to **About**,
+     fill in **Description** and **Topics**, and check **"Use your GitHub Pages
+     website"**.
