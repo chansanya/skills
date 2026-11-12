@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Build output
+web/server/dist/
+web/client/dist/
+
+# VuePress
+docs/.vuepress/.temp
+docs/.vuepress/.cache
+docs/.vuepress/dist
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs & OS
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/

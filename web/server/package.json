@@ -1,0 +1,28 @@
+{
+  "name": "@skills/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "adm-zip": "^0.6.1",
+    "express": "^5.1.0",
+    "multer": "^2.5.0",
+    "tar": "^7.5.23",
+    "yaml": "^2.8.0"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
+    "@types/express": "^5.0.3",
+    "@types/multer": "^2.3.0",
+    "@types/node": "^22.15.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0"
+  }
+}
