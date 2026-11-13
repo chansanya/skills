@@ -107,7 +107,12 @@ onMounted(loadTargets)
             </button>
           </div>
           <div class="chip-grid">
-            <label v-for="s in skills" :key="s.dir" class="check-card">
+            <label
+              v-for="s in skills"
+              :key="s.dir"
+              class="check-card"
+              :class="{ active: selectedSkills.includes(s.dir) }"
+            >
               <input v-model="selectedSkills" type="checkbox" :value="s.dir" :disabled="syncing" />
               <span class="mono">{{ s.dir }}</span>
             </label>
@@ -196,27 +201,40 @@ onMounted(loadTargets)
 .section { display: flex; flex-direction: column; gap: 8px; }
 .section-head { display: flex; align-items: center; justify-content: space-between; }
 .link-btn { background: none; border: 0; color: var(--accent, #58a6ff); cursor: pointer; font-size: 12px; padding: 0; }
-.chip-grid { display: flex; flex-wrap: wrap; gap: 6px; max-height: 110px; overflow: auto; }
+.chip-grid { display: flex; flex-wrap: wrap; gap: 8px; max-height: 120px; overflow-y: auto; padding: 2px; }
 .check-card {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); font-size: 12px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--panel-2); font-size: 13px; cursor: pointer;
+  white-space: nowrap; transition: all .15s;
 }
+.check-card:hover { border-color: rgba(88, 166, 255, 0.4); }
+.check-card.active { border-color: var(--accent, #58a6ff); background: rgba(88, 166, 255, 0.1); color: var(--accent, #58a6ff); font-weight: 500; }
 .target-list { display: flex; flex-direction: column; gap: 6px; }
 .target-row {
-  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
-  border: 1px solid var(--border); border-radius: 6px; font-size: 13px; cursor: pointer;
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+  border: 1px solid var(--border); border-radius: 8px; background: rgba(255, 255, 255, 0.02);
+  font-size: 13px; cursor: pointer; transition: background .15s, border-color .15s;
 }
-.target-name { font-weight: 600; min-width: 145px; }
-.badge { margin-left: auto; font-size: 11px; padding: 2px 6px; border-radius: 4px; }
-.badge-ok { background: rgba(63, 185, 80, 0.15); color: #3fb950; }
+.target-row:hover { background: var(--panel-2); border-color: rgba(255, 255, 255, 0.12); }
+.target-name { font-weight: 600; min-width: 140px; flex-shrink: 0; }
+.target-row code {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-size: 12px; color: var(--muted);
+}
+.badge { flex-shrink: 0; white-space: nowrap; font-size: 11px; padding: 3px 8px; border-radius: 4px; line-height: 1.3; }
+.badge-ok { background: rgba(63, 185, 80, 0.15); color: #3fb950; font-weight: 500; }
 .badge-dim { background: rgba(139, 148, 158, 0.15); color: var(--muted); }
 .custom-row { display: flex; gap: 8px; margin-top: 4px; }
 .custom-row input { flex: 1; }
 .custom-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .tag { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 4px; background: var(--panel-2); font-size: 12px; }
 .tag-x { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; }
-.options-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
-.mode-group { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.options-row {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+  padding: 8px 0 0; border-top: 1px dashed var(--border);
+}
+.mode-group { display: flex; align-items: center; gap: 12px; font-size: 13px; }
 .results { display: flex; flex-direction: column; gap: 8px; max-height: 190px; overflow: auto; padding-top: 4px; }
 .result-block { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 12px; }
 .result-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }

@@ -28,7 +28,7 @@ button {
   cursor: pointer;
 }
 
-input, textarea {
+input:not([type="checkbox"]):not([type="radio"]), textarea {
   font: inherit;
   color: var(--text);
   background: var(--panel-2);
@@ -38,7 +38,17 @@ input, textarea {
   outline: none;
   width: 100%;
 }
-input:focus, textarea:focus { border-color: var(--accent); }
+input:not([type="checkbox"]):not([type="radio"]):focus, textarea:focus { border-color: var(--accent); }
+
+input[type="checkbox"], input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
 
 .btn {
   display: inline-flex;
