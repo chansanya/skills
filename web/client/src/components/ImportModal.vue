@@ -117,13 +117,13 @@ function close() {
 
       <div class="tabs">
         <button type="button" class="tab" :class="{ active: tab === 'remote' }" :disabled="running" @click="switchTab('remote')">
-          <Globe :size="14" />方式 1：在线导入 (skills.sh / GitHub)
+          <Globe :size="14" />在线导入
         </button>
         <button type="button" class="tab" :class="{ active: tab === 'folder' }" :disabled="running" @click="switchTab('folder')">
-          <FolderOpen :size="14" />方式 2：本地文件夹
+          <FolderOpen :size="14" />本地文件夹
         </button>
         <button type="button" class="tab" :class="{ active: tab === 'archive' }" :disabled="running" @click="switchTab('archive')">
-          <Archive :size="14" />方式 3：压缩包 (.zip / .tar.gz)
+          <Archive :size="14" />压缩包
         </button>
       </div>
 
