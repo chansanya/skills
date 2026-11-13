@@ -14,6 +14,43 @@ npm run dev
 
 启动后在浏览器打开 `http://127.0.0.1:5173`。
 
+## 导入 Skill 实操指南
+
+点击页面右上角的 **「导入 Skill」** 按钮，会打开导入弹窗，支持以下 3 种方式：
+
+### 方式 1：在线导入（skills.sh / GitHub）
+
+最常用方式。无论你在 GitHub 上看到某个开源仓库，还是在 [skills.sh](https://skills.sh) 上找到技能，都可以直接下载落盘：
+
+| 你的输入内容 | 来源（Source）输入框 | Skill 名称输入框 |
+| :--- | :--- | :--- |
+| **网页链接** | `https://skills.sh/vercel-labs/agent-skills/web-design-guidelines` | *(留空即可)* |
+| **命令行指令** | `npx skills add vercel-labs/agent-skills --skill web-design-guidelines` | *(留空即可)* |
+| **仓库名** | `vercel-labs/agent-skills` | `web-design-guidelines` |
+
+- **一键快捷试用**：弹窗内提供了示例按钮，点击「示例 1」、「示例 2」可自动填入示范参数测试。
+- **覆盖控制**：若仓库已存在同名技能，勾选「若仓库已存在同名 Skill，允许直接覆盖替换」。
+- **实时日志**：点击「确定导入」后，弹窗内会通过 SSE 实时打印 `npx skills add` 的下载与提取日志。
+
+### 方式 2：本地文件夹导入
+
+适用于你本地已经写好一个 Skill 文件夹，或者从其他项目拷过来的目录：
+
+1. 切换到 **「方式 2：本地文件夹」**。
+2. 点击 **「选择 Skill 文件夹」** 选取该目录。
+   - **必需规范**：文件夹根目录下**必须包含 `SKILL.md`**（带有 `name` 与 `description` 前言信息）。附带的 `resources/`、`scripts/` 会自动一并上传导入。
+3. **存入仓库的目录名**：可留空（自动读取 `SKILL.md` 中的 `name`），也可以自定义指定一个英文目录名（如 `my-tool`）。
+
+### 方式 3：压缩包导入（.zip / .tar.gz / .tgz）
+
+适用于别人打包发给你的 Skill 压缩包：
+
+1. 切换到 **「方式 3：压缩包」**。
+2. 点击选择本地的 `.zip`、`.tar.gz` 或 `.tgz` 文件（单文件最大 20MB）。
+3. 系统在服务端安全解压并做路径防穿越与软链接校验，确认包含合法 `SKILL.md` 后落盘。
+
+---
+
 ## 核心功能
 
 - **Skill 列表与检索**：按名称、目录或描述关键字过滤本地 Skill。
