@@ -48,10 +48,13 @@ export type SyncMode = 'copy' | 'symlink'
 export interface AgentTarget {
   id: string
   label: string
+  env: 'wsl' | 'host'
+  envLabel: string
   path: string
   displayPath: string
   parentExists: boolean
   exists: boolean
+  isCrossEnv: boolean
 }
 
 export interface SkillSyncResult {
@@ -63,6 +66,7 @@ export interface SkillSyncResult {
 export interface TargetSyncResult {
   id: string
   label: string
+  env: 'wsl' | 'host'
   path: string
   displayPath: string
   error?: string

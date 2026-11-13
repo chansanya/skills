@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { CheckCircle2, FolderSync, Loader2, Plus, X, XCircle } from 'lucide-vue-next'
+import { CheckCircle2, FolderSync, Info, Loader2, Plus, X, XCircle } from 'lucide-vue-next'
 import { api, type AgentTarget, type SkillSummary, type SyncMode, type TargetSyncResult } from '../api'
 
 const props = defineProps<{
@@ -21,6 +21,69 @@ const mode = ref<SyncMode>('symlink')
 const syncing = ref(false)
 const error = ref('')
 const results = ref<TargetSyncResult[] | null>(null)
+const envTab = ref<'all' | 'wsl' | 'host'>('all')
+
+const wslTargets = computed(() => targets.value.filter((t) => t.env === 'wsl'))
+const hostTargets = computed(() => targets.value.filter((t) => t.env === 'host'))
+const hasHost = computed(() => hostTargets.value.length > 0)
+
+const hasCrossEnvSelected = computed(() =>
+  targets.value.some((t) => t.isCrossEnv && selectedTargets.value.includes(t.id)),
+)
+
+const displayedGroups = computed(() => {
+  const groups: {
+    key: 'wsl' | 'host'
+    title: string
+    icon: string
+    items: AgentTarget[]
+  }[] = []
+
+  if (envTab.value === 'all' || envTab.value === 'wsl') {
+    if (wslTargets.value.length) {
+      groups.push({ key: 'wsl', title: 'WSL 环境 (Linux)', icon: '🐧', items: wslTargets.value })
+    }
+  }
+  if (envTab.value === 'all' || envTab.value === 'host') {
+    if (hostTargets.value.length) {
+      groups.push({ key: 'host', title: 'Windows 主机环境 (Host)', icon: '🪟', items: hostTargets.value })
+    }
+  }
+  return groups
+})
+
+function selectAllDetected() {
+  const detectedIds = targets.value.filter((t) => t.parentExists || t.exists).map((t) => t.id)
+  selectedTargets.value = Array.from(new Set([...selectedTargets.value, ...detectedIds]))
+}
+
+function selectAllTargets() {
+  selectedTargets.value = targets.value.map((t) => t.id)
+}
+
+function clearAllTargets() {
+  selectedTargets.value = []
+}
+
+function isGroupAllSelected(groupKey: 'wsl' | 'host'): boolean {
+  const group = groupKey === 'wsl' ? wslTargets.value : hostTargets.value
+  return group.length > 0 && group.every((t) => selectedTargets.value.includes(t.id))
+}
+
+function groupSelectedCount(groupKey: 'wsl' | 'host'): number {
+  const group = groupKey === 'wsl' ? wslTargets.value : hostTargets.value
+  return group.filter((t) => selectedTargets.value.includes(t.id)).length
+}
+
+function toggleGroup(groupKey: 'wsl' | 'host') {
+  const group = groupKey === 'wsl' ? wslTargets.value : hostTargets.value
+  const allInGroup = group.map((t) => t.id)
+  if (isGroupAllSelected(groupKey)) {
+    selectedTargets.value = selectedTargets.value.filter((id) => !allInGroup.includes(id))
+  } else {
+    selectedTargets.value = Array.from(new Set([...selectedTargets.value, ...allInGroup]))
+  }
+}
 
 const allSkillsSelected = computed(
   () => props.skills.length > 0 && selectedSkills.value.length === props.skills.length,
@@ -120,24 +183,84 @@ onMounted(loadTargets)
         </div>
 
         <div class="section">
-          <label>选择目标 Agent 目录</label>
-          <p v-if="loadingTargets" class="muted">正在检测本机 Agent 目录…</p>
-          <div v-else class="target-list">
-            <label v-for="t in targets" :key="t.id" class="target-row">
-              <input v-model="selectedTargets" type="checkbox" :value="t.id" :disabled="syncing" />
-              <span class="target-name">{{ t.label }}</span>
-              <code class="mono muted">{{ t.displayPath }}</code>
-              <span class="badge" :class="t.parentExists || t.exists ? 'badge-ok' : 'badge-dim'">
-                {{ t.exists ? '已有目录' : t.parentExists ? '已检测到 Agent' : '未检测到' }}
-              </span>
-            </label>
+          <div class="section-head">
+            <div class="head-left">
+              <label>选择目标 Agent 目录（已选 {{ selectedTargets.length + customTargets.length }}）</label>
+              <div v-if="hasHost" class="env-filter-tabs">
+                <button
+                  type="button"
+                  class="env-tab-btn"
+                  :class="{ active: envTab === 'all' }"
+                  @click="envTab = 'all'"
+                >
+                  全部 ({{ targets.length }})
+                </button>
+                <button
+                  type="button"
+                  class="env-tab-btn"
+                  :class="{ active: envTab === 'wsl' }"
+                  @click="envTab = 'wsl'"
+                >
+                  🐧 WSL ({{ wslTargets.length }})
+                </button>
+                <button
+                  type="button"
+                  class="env-tab-btn"
+                  :class="{ active: envTab === 'host' }"
+                  @click="envTab = 'host'"
+                >
+                  🪟 Windows 主机 ({{ hostTargets.length }})
+                </button>
+              </div>
+            </div>
+            <div class="quick-actions">
+              <button type="button" class="link-btn" :disabled="syncing" @click="selectAllDetected">全选已检测</button>
+              <span class="sep">|</span>
+              <button type="button" class="link-btn" :disabled="syncing" @click="selectAllTargets">全选</button>
+              <span class="sep">|</span>
+              <button type="button" class="link-btn" :disabled="syncing" @click="clearAllTargets">清空</button>
+            </div>
+          </div>
+
+          <p v-if="loadingTargets" class="muted">正在检测环境（WSL / Windows 主机）及 Agent 目录…</p>
+
+          <div v-else class="groups-container">
+            <div v-for="grp in displayedGroups" :key="grp.key" class="env-group-card">
+              <div class="group-header">
+                <div class="group-title">
+                  <span class="grp-icon">{{ grp.icon }}</span>
+                  <strong>{{ grp.title }}</strong>
+                  <span class="count-badge">{{ groupSelectedCount(grp.key) }} / {{ grp.items.length }}</span>
+                </div>
+                <button
+                  type="button"
+                  class="link-btn"
+                  :disabled="syncing"
+                  @click="toggleGroup(grp.key)"
+                >
+                  {{ isGroupAllSelected(grp.key) ? '取消全选本组' : '全选本组' }}
+                </button>
+              </div>
+
+              <div class="target-list">
+                <label v-for="t in grp.items" :key="t.id" class="target-row">
+                  <input v-model="selectedTargets" type="checkbox" :value="t.id" :disabled="syncing" />
+                  <span class="target-name">{{ t.label }}</span>
+                  <code class="mono target-path" :title="t.path">{{ t.displayPath }}</code>
+                  <span v-if="t.isCrossEnv" class="badge badge-cross" title="跨环境同步：Windows 原生兼容">跨主机复制</span>
+                  <span class="badge" :class="t.exists ? 'badge-ok' : (t.parentExists ? 'badge-info' : 'badge-dim')">
+                    {{ t.exists ? '已有目录' : (t.parentExists ? '已检测到 Agent' : '未检测到') }}
+                  </span>
+                </label>
+              </div>
+            </div>
           </div>
 
           <div class="custom-row">
             <input
               v-model="customInput"
               class="mono"
-              placeholder="自定义目标目录，例如 ~/.my-agent/skills"
+              placeholder="自定义目标目录，例如 ~/.my-agent/skills 或 C:/Users/..."
               :disabled="syncing"
               @keydown.enter.prevent="addCustomTarget"
             />
@@ -157,9 +280,14 @@ onMounted(loadTargets)
           <label class="check"><input v-model="overwrite" type="checkbox" :disabled="syncing" />覆盖目标目录同名 Skill</label>
           <div class="mode-group">
             <span class="muted">方式：</span>
-            <label class="check"><input v-model="mode" type="radio" value="copy" :disabled="syncing" />复制文件</label>
             <label class="check"><input v-model="mode" type="radio" value="symlink" :disabled="syncing" />软链接</label>
+            <label class="check"><input v-model="mode" type="radio" value="copy" :disabled="syncing" />复制文件</label>
           </div>
+        </div>
+
+        <div v-if="mode === 'symlink' && hasCrossEnvSelected" class="cross-hint">
+          <Info :size="14" class="info-icon" />
+          <span>选中的 Windows 主机目录将自动采用复制文件模式下发，确保 Windows 原生应用正常读取。WSL 目标保持软链接。</span>
         </div>
 
         <p v-if="error" class="error">{{ error }}</p>
@@ -167,6 +295,9 @@ onMounted(loadTargets)
         <div v-if="results" class="results">
           <div v-for="r in results" :key="r.id" class="result-block">
             <div class="result-head">
+              <span class="env-pill" :class="r.env === 'host' ? 'pill-host' : 'pill-wsl'">
+                {{ r.env === 'host' ? '🪟 Windows' : '🐧 WSL' }}
+              </span>
               <strong>{{ r.label }}</strong>
               <code class="mono muted">{{ r.displayPath }}</code>
             </div>
@@ -197,11 +328,24 @@ onMounted(loadTargets)
 </template>
 
 <style scoped>
-.modal-wide { width: min(680px, 94vw); }
+.modal-wide { width: min(720px, 94vw); }
 .section { display: flex; flex-direction: column; gap: 8px; }
-.section-head { display: flex; align-items: center; justify-content: space-between; }
+.section-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.head-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.env-filter-tabs { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: rgba(0,0,0,0.15); }
+.env-tab-btn {
+  background: transparent; border: 0; padding: 2px 8px; font-size: 11px;
+  color: var(--muted); cursor: pointer; transition: all .15s;
+}
+.env-tab-btn:hover { color: var(--fg); background: rgba(255, 255, 255, 0.04); }
+.env-tab-btn.active { background: rgba(88, 166, 255, 0.15); color: var(--accent, #58a6ff); font-weight: 500; }
+
+.quick-actions { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.sep { color: var(--border); font-size: 10px; }
 .link-btn { background: none; border: 0; color: var(--accent, #58a6ff); cursor: pointer; font-size: 12px; padding: 0; }
-.chip-grid { display: flex; flex-wrap: wrap; gap: 8px; max-height: 120px; overflow-y: auto; padding: 2px; }
+.link-btn:hover { text-decoration: underline; }
+
+.chip-grid { display: flex; flex-wrap: wrap; gap: 8px; max-height: 100px; overflow-y: auto; padding: 2px; }
 .check-card {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border);
@@ -210,34 +354,65 @@ onMounted(loadTargets)
 }
 .check-card:hover { border-color: rgba(88, 166, 255, 0.4); }
 .check-card.active { border-color: var(--accent, #58a6ff); background: rgba(88, 166, 255, 0.1); color: var(--accent, #58a6ff); font-weight: 500; }
-.target-list { display: flex; flex-direction: column; gap: 6px; }
+
+.groups-container {
+  display: flex; flex-direction: column; gap: 12px;
+  max-height: 300px; overflow-y: auto; padding-right: 4px;
+}
+.env-group-card {
+  border: 1px solid var(--border); border-radius: 8px; background: rgba(255, 255, 255, 0.015);
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
+}
+.group-header {
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.08); padding-bottom: 6px;
+}
+.group-title { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.grp-icon { font-size: 14px; }
+.count-badge { font-size: 11px; color: var(--muted); background: var(--panel-2); padding: 1px 6px; border-radius: 10px; }
+
+.target-list { display: flex; flex-direction: column; gap: 5px; }
 .target-row {
-  display: flex; align-items: center; gap: 12px; padding: 10px 14px;
-  border: 1px solid var(--border); border-radius: 8px; background: rgba(255, 255, 255, 0.02);
+  display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+  border: 1px solid var(--border); border-radius: 6px; background: rgba(255, 255, 255, 0.02);
   font-size: 13px; cursor: pointer; transition: background .15s, border-color .15s;
 }
 .target-row:hover { background: var(--panel-2); border-color: rgba(255, 255, 255, 0.12); }
-.target-name { font-weight: 600; min-width: 140px; flex-shrink: 0; }
-.target-row code {
+.target-name { font-weight: 600; min-width: 130px; flex-shrink: 0; }
+.target-path {
   flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; font-size: 12px; color: var(--muted);
 }
-.badge { flex-shrink: 0; white-space: nowrap; font-size: 11px; padding: 3px 8px; border-radius: 4px; line-height: 1.3; }
+.badge { flex-shrink: 0; white-space: nowrap; font-size: 11px; padding: 2px 7px; border-radius: 4px; line-height: 1.3; }
 .badge-ok { background: rgba(63, 185, 80, 0.15); color: #3fb950; font-weight: 500; }
+.badge-info { background: rgba(88, 166, 255, 0.15); color: var(--accent, #58a6ff); font-weight: 500; }
 .badge-dim { background: rgba(139, 148, 158, 0.15); color: var(--muted); }
+.badge-cross { background: rgba(210, 153, 34, 0.15); color: #d29922; font-size: 10px; }
+
 .custom-row { display: flex; gap: 8px; margin-top: 4px; }
 .custom-row input { flex: 1; }
 .custom-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .tag { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 4px; background: var(--panel-2); font-size: 12px; }
 .tag-x { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; }
+
 .options-row {
   display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
   padding: 8px 0 0; border-top: 1px dashed var(--border);
 }
 .mode-group { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.cross-hint {
+  display: flex; align-items: center; gap: 8px; font-size: 12px; color: #d29922;
+  background: rgba(210, 153, 34, 0.1); border: 1px solid rgba(210, 153, 34, 0.25);
+  padding: 6px 10px; border-radius: 6px; line-height: 1.4;
+}
+.info-icon { flex-shrink: 0; }
+
 .results { display: flex; flex-direction: column; gap: 8px; max-height: 190px; overflow: auto; padding-top: 4px; }
 .result-block { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 12px; }
 .result-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.env-pill { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+.pill-wsl { background: rgba(88, 166, 255, 0.15); color: var(--accent, #58a6ff); }
+.pill-host { background: rgba(210, 153, 34, 0.15); color: #d29922; }
 .result-skills { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
 .result-item { display: flex; align-items: center; gap: 6px; }
 .spin { animation: spin 1s linear infinite; }
