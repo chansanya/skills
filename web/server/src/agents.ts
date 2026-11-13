@@ -72,7 +72,21 @@ interface HostInfo {
   localPath: string
 }
 
+interface WslInfo {
+  uncPath: string
+}
+
 let cachedHostInfo: HostInfo | null | undefined
+let cachedWslInfo: WslInfo | null | undefined
+
+function checkIsWSL(): boolean {
+  if (process.platform !== 'linux') return false
+  return (
+    process.env.WSL_DISTRO_NAME !== undefined ||
+    process.env.WSL_INTEROP !== undefined ||
+    (fs.existsSync('/proc/version') && fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft'))
+  )
+}
 
 function detectHostInfo(): HostInfo | null {
   if (cachedHostInfo !== undefined) return cachedHostInfo
@@ -82,13 +96,8 @@ function detectHostInfo(): HostInfo | null {
     return cachedHostInfo
   }
 
-  // Check if running in WSL
-  const isWSL =
-    process.env.WSL_DISTRO_NAME !== undefined ||
-    process.env.WSL_INTEROP !== undefined ||
-    (fs.existsSync('/proc/version') && fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft'))
-
-  if (!isWSL) {
+  // 仅在 WSL 下嗅探 Windows 宿主环境，macOS 和原生 Linux 不需要
+  if (!checkIsWSL()) {
     cachedHostInfo = null
     return null
   }
@@ -123,10 +132,44 @@ function detectHostInfo(): HostInfo | null {
   return null
 }
 
+function detectWslFromWindows(): WslInfo | null {
+  if (cachedWslInfo !== undefined) return cachedWslInfo
+
+  // 仅在 Windows 环境下嗅探 WSL，macOS 和原生 Linux 不需要
+  if (process.platform !== 'win32') {
+    cachedWslInfo = null
+    return null
+  }
+
+  try {
+    const raw = execSync('wsl.exe -e sh -c "wslpath -w ~"', {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 3000,
+    }).trim()
+
+    if (raw && fs.existsSync(raw)) {
+      cachedWslInfo = { uncPath: raw }
+      return cachedWslInfo
+    }
+  } catch {
+    // wsl 未安装或未启动
+  }
+
+  cachedWslInfo = null
+  return null
+}
+
 function getAllowedHomes(): string[] {
   const homes = [LOCAL_HOME]
   const host = detectHostInfo()
-  if (host && host.localPath !== LOCAL_HOME) homes.push(host.localPath)
+  if (host && host.localPath !== LOCAL_HOME && !homes.includes(host.localPath)) {
+    homes.push(host.localPath)
+  }
+  const wsl = detectWslFromWindows()
+  if (wsl && wsl.uncPath !== LOCAL_HOME && !homes.includes(wsl.uncPath)) {
+    homes.push(wsl.uncPath)
+  }
   return homes
 }
 
@@ -134,15 +177,10 @@ let syncing = false
 
 function buildAllPresets(): AgentTarget[] {
   const targets: AgentTarget[] = []
-  const host = detectHostInfo()
-  const isWSL =
-    process.platform === 'linux' &&
-    (process.env.WSL_DISTRO_NAME !== undefined ||
-      process.env.WSL_INTEROP !== undefined ||
-      (fs.existsSync('/proc/version') && fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft')))
+  const isWSL = checkIsWSL()
 
   if (isWSL) {
-    // 1. WSL 自身环境
+    // 1. WSL 自身环境（原生本地，不跨环境）
     for (const def of AGENT_DEFS) {
       const fullPath = path.join(LOCAL_HOME, def.rel)
       targets.push({
@@ -158,7 +196,8 @@ function buildAllPresets(): AgentTarget[] {
       })
     }
 
-    // 2. 宿主 Windows 主机环境
+    // 2. 外部宿主 Windows 主机环境（跨环境，仅支持复制）
+    const host = detectHostInfo()
     if (host) {
       for (const def of AGENT_DEFS) {
         const fullPath = path.join(host.localPath, def.rel)
@@ -176,21 +215,53 @@ function buildAllPresets(): AgentTarget[] {
         })
       }
     }
-  } else {
-    // 非 WSL 环境（如 macOS、原生 Linux、原生 Windows）：当前机器即是「主机」
+  } else if (process.platform === 'win32') {
+    // 运行在 Windows 环境中：
+    // 1. Windows 本地主机环境（原生本地）
     for (const def of AGENT_DEFS) {
       const fullPath = path.join(LOCAL_HOME, def.rel)
-      const display =
-        process.platform === 'win32'
-          ? `${LOCAL_HOME}\\${def.rel.replace(/\//g, '\\')}`
-          : `~/${def.rel}`
       targets.push({
         id: `host:${def.key}`,
         label: def.label,
         env: 'host',
         envLabel: '主机',
         path: fullPath,
-        displayPath: display,
+        displayPath: `${LOCAL_HOME}\\${def.rel.replace(/\//g, '\\')}`,
+        parentExists: false,
+        exists: false,
+        isCrossEnv: false,
+      })
+    }
+
+    // 2. 嗅探是否有 WSL 环境（跨环境，仅支持复制）
+    const wsl = detectWslFromWindows()
+    if (wsl) {
+      for (const def of AGENT_DEFS) {
+        const fullPath = path.join(wsl.uncPath, def.rel)
+        targets.push({
+          id: `wsl:${def.key}`,
+          label: def.label,
+          env: 'wsl',
+          envLabel: 'WSL',
+          path: fullPath,
+          displayPath: `~/${def.rel}`,
+          parentExists: false,
+          exists: false,
+          isCrossEnv: true, // 从 Windows 下发到 WSL UNC 路径，属于跨环境
+        })
+      }
+    }
+  } else {
+    // macOS 或原生 Linux：不嗅探 WSL，只有唯一的「主机」选项
+    for (const def of AGENT_DEFS) {
+      const fullPath = path.join(LOCAL_HOME, def.rel)
+      targets.push({
+        id: `host:${def.key}`,
+        label: def.label,
+        env: 'host',
+        envLabel: '主机',
+        path: fullPath,
+        displayPath: `~/${def.rel}`,
         parentExists: false,
         exists: false,
         isCrossEnv: false, // 原生同主机，不跨环境，支持软链接
@@ -215,31 +286,77 @@ export async function listTargets(): Promise<AgentTarget[]> {
 function resolveCustomTarget(raw: string): TargetItem {
   const input = raw.trim()
   if (!input || input.length > 500 || input.includes('\0')) throw badRequest(`非法的目标路径：${raw}`)
+  const isWSL = checkIsWSL()
+  const isWin = process.platform === 'win32'
   const host = detectHostInfo()
-
-  const isWSL =
-    process.platform === 'linux' &&
-    (process.env.WSL_DISTRO_NAME !== undefined ||
-      process.env.WSL_INTEROP !== undefined ||
-      (fs.existsSync('/proc/version') && fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft')))
+  const wsl = detectWslFromWindows()
 
   let abs: string
   let display: string
   let env: 'wsl' | 'host' = isWSL ? 'wsl' : 'host'
   let isCrossEnv = false
 
-  // Windows-style path: C:\Users\... or C:/Users/...
-  if (/^[a-zA-Z]:[/\\]/.test(input)) {
-    if (!host) throw badRequest('未检测到 Windows 主机环境，不支持指定 Windows 盘符路径')
-    try {
-      abs = execSync(`wslpath -u "${input}"`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
-    } catch {
-      throw badRequest(`无法解析 Windows 路径：${input}`)
+  if (isWSL) {
+    // 运行在 WSL 内部
+    if (/^[a-zA-Z]:[/\\]/.test(input)) {
+      if (!host) throw badRequest('未检测到 Windows 主机环境，不支持指定 Windows 盘符路径')
+      try {
+        abs = execSync(`wslpath -u "${input}"`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+      } catch {
+        throw badRequest(`无法解析 Windows 路径：${input}`)
+      }
+      display = input
+      env = 'host'
+      isCrossEnv = true
+    } else {
+      const normalized = input.replace(/\\/g, '/')
+      if (normalized.split('/').includes('..')) throw badRequest(`目标路径不能包含 ..：${raw}`)
+
+      if (normalized === '~' || normalized.startsWith('~/')) {
+        abs = path.join(LOCAL_HOME, normalized.slice(1))
+        display = normalized
+      } else if (path.isAbsolute(input)) {
+        abs = path.resolve(input)
+        display = abs
+      } else {
+        throw badRequest(`目标路径必须以 ~/ 或绝对路径（如 C:\\...）开头：${raw}`)
+      }
     }
-    display = input
-    env = 'host'
-    isCrossEnv = true
+  } else if (isWin) {
+    // 运行在 Windows 上
+    if (/^\\\\wsl(\.localhost)?\\/i.test(input)) {
+      abs = path.resolve(input)
+      display = input
+      env = 'wsl'
+      isCrossEnv = true
+    } else if (/^[a-zA-Z]:[/\\]/.test(input)) {
+      abs = path.resolve(input)
+      display = input
+      env = 'host'
+      isCrossEnv = false
+    } else if (input === '~' || input.startsWith('~/') || input.startsWith('~\\')) {
+      if (wsl) {
+        const rel = input.slice(1).replace(/^[/\\]+/, '')
+        abs = path.join(wsl.uncPath, rel)
+        display = `~/${rel.replace(/\\/g, '/')}`
+        env = 'wsl'
+        isCrossEnv = true
+      } else {
+        abs = path.join(LOCAL_HOME, input.slice(1))
+        display = abs
+        env = 'host'
+        isCrossEnv = false
+      }
+    } else if (path.isAbsolute(input)) {
+      abs = path.resolve(input)
+      display = abs
+      env = 'host'
+      isCrossEnv = false
+    } else {
+      throw badRequest(`目标路径格式无效：${raw}`)
+    }
   } else {
+    // macOS 或原生 Linux
     const normalized = input.replace(/\\/g, '/')
     if (normalized.split('/').includes('..')) throw badRequest(`目标路径不能包含 ..：${raw}`)
 
@@ -250,8 +367,10 @@ function resolveCustomTarget(raw: string): TargetItem {
       abs = path.resolve(input)
       display = abs
     } else {
-      throw badRequest(`目标路径必须以 ~/ 或绝对路径（如 C:\\...）开头：${raw}`)
+      throw badRequest(`目标路径必须以 ~/ 或绝对路径开头：${raw}`)
     }
+    env = 'host'
+    isCrossEnv = false
   }
 
   const allowed = getAllowedHomes()

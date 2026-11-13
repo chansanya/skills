@@ -77,14 +77,12 @@ async function loadTargets() {
   error.value = ''
   try {
     targets.value = await api.listAgentTargets()
-    // 若存在 WSL 环境则默认定位到 WSL，否则直接定位到「主机」
-    if (wslTargets.value.length > 0) {
-      envTab.value = 'wsl'
-      selectedTargets.value = wslTargets.value.filter((t) => t.parentExists || t.exists).map((t) => t.id)
-    } else {
-      envTab.value = 'host'
-      selectedTargets.value = hostTargets.value.filter((t) => t.parentExists || t.exists).map((t) => t.id)
-    }
+    // 优先定位到当前运行的本地原生环境（isCrossEnv === false）
+    const nativeTarget = targets.value.find((t) => !t.isCrossEnv)
+    const defaultEnv = nativeTarget ? nativeTarget.env : (wslTargets.value.length > 0 ? 'wsl' : 'host')
+    envTab.value = defaultEnv
+    const activeTargets = defaultEnv === 'wsl' ? wslTargets.value : hostTargets.value
+    selectedTargets.value = activeTargets.filter((t) => t.parentExists || t.exists).map((t) => t.id)
     mode.value = isCrossEnv.value ? 'copy' : 'symlink'
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
