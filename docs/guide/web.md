@@ -27,6 +27,8 @@ npm run dev
 | **Skills 搜索** | Skill 名称或关键词，如 `find-skills` | 搜索后从匹配结果中选择一个 Skill |
 | **GitHub 仓库** | `owner/repo` 或完整 GitHub 地址 | 自动分析全部 `SKILL.md`，多选需要导入的 Skill |
 
+- **推荐技能快捷检索**：搜索框下方根据根目录 `recommended-skills.json` 自动推荐常用技能标签，点击即可直接发起 `skills.sh` 搜索；本地已存在的技能会自动过滤隐藏。
+- **技能收藏（星标与私有管理）**：搜索结果项支持点击 ⭐ 收藏。收藏数据保存在根目录 `favorites.json` 中并被 Git 忽略，方便后续随时在「技能收藏」标签页中筛选并一键安装到本地。
 - **预检测机制（安全防错）**：点击「预检测 Skill 信息」后，系统会先从远端探测并解析该技能的名称、简介说明、附属文件列表以及本地冲突状态。
 - **GitHub 仓库分析**：仓库只需填写一次；系统会列出所有 `SKILL.md` 并支持多选批量导入。缺少 `name` / `description` Frontmatter 的项目会标记为“兼容 Skill”，默认只在本地副本中自动补全元数据；也可以选择保持原文件直接导入。只有符号链接、危险路径或超限文件等安全问题才会阻止导入。
 - **卡片式信息确认**：查看技能简介无误后，点击「确认下载入库」瞬间完成落盘；若不想导入也可点击「返回修改」重新输入。
@@ -71,6 +73,10 @@ npm run dev
 | --- | --- | --- |
 | `GET` | `/api/skills` | 列出所有 Skill（`name`、`dir`、`description`、资源文件） |
 | `GET` | `/api/skills/search?q=...` | 按名称或关键词搜索 Skills 目录 |
+| `GET` | `/api/skills/recommended` | 获取推荐技能列表（读取根目录 `recommended-skills.json`） |
+| `GET` | `/api/skills/favorites` | 获取本地收藏的技能列表 |
+| `POST` | `/api/skills/favorites` | 添加 Skill 收藏（写入根目录 `favorites.json`，原子落盘） |
+| `DELETE` | `/api/skills/favorites/:name` | 移除指定 Skill 收藏 |
 | `POST` | `/api/skills/repository/inspect` | 克隆并分析 GitHub 仓库中的全部 Skill |
 | `POST` | `/api/skills/repository/install` | 批量导入仓库分析结果中的选定 Skill |
 | `GET` | `/api/skills/:name` | 返回 `SKILL.md` 完整内容与文件树 |

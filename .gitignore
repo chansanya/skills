@@ -1,5 +1,7 @@
 # Dependencies
 node_modules/
+.venv/
+venv/
 
 # Build output
 web/server/dist/

@@ -6,12 +6,6 @@
     "description": "浏览器自动化操作与评测"
   },
   {
-    "name": "agents-sdk",
-    "query": "agents-sdk",
-    "source": "cloudflare",
-    "description": "基于 Cloudflare Workers 的 AI Agent SDK"
-  },
-  {
     "name": "amap-jsapi-skill",
     "query": "amap-jsapi-skill",
     "source": "local",
@@ -28,12 +22,6 @@
     "query": "cloudflare",
     "source": "cloudflare",
     "description": "Cloudflare 全平台技能 (Workers, Pages, KV, D1, R2, AI)"
-  },
-  {
-    "name": "cloudflare-email-service",
-    "query": "cloudflare-email-service",
-    "source": "cloudflare",
-    "description": "Cloudflare Email 邮件收发与路由"
   },
   {
     "name": "code-review",
@@ -106,12 +94,6 @@
     "query": "prototype",
     "source": "mattpocock/skills",
     "description": "快速原型设计与敏捷构建"
-  },
-  {
-    "name": "release-todo",
-    "query": "release-todo",
-    "source": "local",
-    "description": "项目版本待发布事项自动生成与更新"
   },
   {
     "name": "tdd",
