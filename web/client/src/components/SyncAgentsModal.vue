@@ -27,10 +27,36 @@ const wslTargets = computed(() => targets.value.filter((t) => t.env === 'wsl'))
 const hostTargets = computed(() => targets.value.filter((t) => t.env === 'host'))
 const hasHost = computed(() => hostTargets.value.length > 0)
 
+const currentTabSelectedCount = computed(() => {
+  if (envTab.value === 'wsl') {
+    return wslTargets.value.filter((t) => selectedTargets.value.includes(t.id)).length
+  }
+  if (envTab.value === 'host') {
+    return hostTargets.value.filter((t) => selectedTargets.value.includes(t.id)).length
+  }
+  return selectedTargets.value.length + customTargets.value.length
+})
+
+const effectiveTargets = computed(() => {
+  let list = targets.value.filter((t) => selectedTargets.value.includes(t.id))
+  if (envTab.value === 'wsl') {
+    list = list.filter((t) => t.env === 'wsl')
+    return list.map((t) => t.id)
+  }
+  if (envTab.value === 'host') {
+    list = list.filter((t) => t.env === 'host')
+    const winCustom = customTargets.value.filter((c) => /^[a-zA-Z]:[/\\]/.test(c.trim()))
+    return [...list.map((t) => t.id), ...winCustom]
+  }
+  return [...list.map((t) => t.id), ...customTargets.value]
+})
+
 const hasCrossEnvSelected = computed(() => {
+  if (envTab.value === 'wsl') return false
+  if (envTab.value === 'host') return true
   const customCross = customTargets.value.some((c) => /^[a-zA-Z]:[/\\]/.test(c.trim()))
-  const presetCross = targets.value.some((t) => t.isCrossEnv && selectedTargets.value.includes(t.id))
-  return customCross || presetCross
+  const hostCross = hostTargets.value.some((t) => selectedTargets.value.includes(t.id))
+  return customCross || hostCross
 })
 
 watch(
@@ -38,10 +64,31 @@ watch(
   (cross) => {
     if (cross) {
       mode.value = 'copy'
+    } else {
+      mode.value = 'symlink'
     }
   },
   { immediate: true },
 )
+
+function switchEnvTab(tab: 'all' | 'wsl' | 'host') {
+  envTab.value = tab
+  if (tab === 'wsl') {
+    const wslOnly = selectedTargets.value.filter((id) =>
+      wslTargets.value.some((t) => t.id === id),
+    )
+    selectedTargets.value = wslOnly.length
+      ? wslOnly
+      : wslTargets.value.filter((t) => t.parentExists || t.exists).map((t) => t.id)
+  } else if (tab === 'host') {
+    const hostOnly = selectedTargets.value.filter((id) =>
+      hostTargets.value.some((t) => t.id === id),
+    )
+    selectedTargets.value = hostOnly.length
+      ? hostOnly
+      : hostTargets.value.filter((t) => t.parentExists || t.exists).map((t) => t.id)
+  }
+}
 
 const displayedGroups = computed(() => {
   const groups: {
@@ -65,16 +112,41 @@ const displayedGroups = computed(() => {
 })
 
 function selectAllDetected() {
-  const detectedIds = targets.value.filter((t) => t.parentExists || t.exists).map((t) => t.id)
-  selectedTargets.value = Array.from(new Set([...selectedTargets.value, ...detectedIds]))
+  if (envTab.value === 'wsl') {
+    const ids = wslTargets.value.filter((t) => t.parentExists || t.exists).map((t) => t.id)
+    selectedTargets.value = Array.from(new Set([...selectedTargets.value, ...ids]))
+  } else if (envTab.value === 'host') {
+    const ids = hostTargets.value.filter((t) => t.parentExists || t.exists).map((t) => t.id)
+    selectedTargets.value = Array.from(new Set([...selectedTargets.value, ...ids]))
+  } else {
+    const ids = targets.value.filter((t) => t.parentExists || t.exists).map((t) => t.id)
+    selectedTargets.value = Array.from(new Set([...selectedTargets.value, ...ids]))
+  }
 }
 
 function selectAllTargets() {
-  selectedTargets.value = targets.value.map((t) => t.id)
+  if (envTab.value === 'wsl') {
+    const ids = wslTargets.value.map((t) => t.id)
+    selectedTargets.value = Array.from(new Set([...selectedTargets.value, ...ids]))
+  } else if (envTab.value === 'host') {
+    const ids = hostTargets.value.map((t) => t.id)
+    selectedTargets.value = Array.from(new Set([...selectedTargets.value, ...ids]))
+  } else {
+    selectedTargets.value = targets.value.map((t) => t.id)
+  }
 }
 
 function clearAllTargets() {
-  selectedTargets.value = []
+  if (envTab.value === 'wsl') {
+    const wslIds = wslTargets.value.map((t) => t.id)
+    selectedTargets.value = selectedTargets.value.filter((id) => !wslIds.includes(id))
+  } else if (envTab.value === 'host') {
+    const hostIds = hostTargets.value.map((t) => t.id)
+    selectedTargets.value = selectedTargets.value.filter((id) => !hostIds.includes(id))
+  } else {
+    selectedTargets.value = []
+    customTargets.value = []
+  }
 }
 
 function isGroupAllSelected(groupKey: 'wsl' | 'host'): boolean {
@@ -121,7 +193,13 @@ async function loadTargets() {
   error.value = ''
   try {
     targets.value = await api.listAgentTargets()
-    selectedTargets.value = targets.value.filter((t) => t.parentExists || t.exists).map((t) => t.id)
+    // 默认仅勾选当前平台（WSL）已检测到的 Agent 目录，保持默认轻量软链接体验
+    const localDetected = targets.value
+      .filter((t) => t.env === 'wsl' && (t.parentExists || t.exists))
+      .map((t) => t.id)
+    selectedTargets.value = localDetected.length
+      ? localDetected
+      : targets.value.filter((t) => t.parentExists || t.exists).map((t) => t.id)
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -131,7 +209,7 @@ async function loadTargets() {
 
 async function submit() {
   if (syncing.value) return
-  const allTargets = [...selectedTargets.value, ...customTargets.value]
+  const allTargets = effectiveTargets.value
   if (!selectedSkills.value.length) {
     error.value = '请至少选择一个 Skill'
     return
@@ -197,13 +275,13 @@ onMounted(loadTargets)
         <div class="section">
           <div class="section-head">
             <div class="head-left">
-              <label>选择目标 Agent 目录（已选 {{ selectedTargets.length + customTargets.length }}）</label>
+              <label>选择目标 Agent 目录（已选 {{ currentTabSelectedCount }}）</label>
               <div v-if="hasHost" class="env-filter-tabs">
                 <button
                   type="button"
                   class="env-tab-btn"
                   :class="{ active: envTab === 'all' }"
-                  @click="envTab = 'all'"
+                  @click="switchEnvTab('all')"
                 >
                   全部 ({{ targets.length }})
                 </button>
@@ -211,7 +289,7 @@ onMounted(loadTargets)
                   type="button"
                   class="env-tab-btn"
                   :class="{ active: envTab === 'wsl' }"
-                  @click="envTab = 'wsl'"
+                  @click="switchEnvTab('wsl')"
                 >
                   🐧 WSL ({{ wslTargets.length }})
                 </button>
@@ -219,7 +297,7 @@ onMounted(loadTargets)
                   type="button"
                   class="env-tab-btn"
                   :class="{ active: envTab === 'host' }"
-                  @click="envTab = 'host'"
+                  @click="switchEnvTab('host')"
                 >
                   🪟 Windows 主机 ({{ hostTargets.length }})
                 </button>
