@@ -265,7 +265,7 @@ function normalizedSkillContent(item: CachedRepositorySkill, content: string): s
   return `---\n${stringifyYaml(metadata).trimEnd()}\n---\n\n${body.replace(/^\s+/, '')}`
 }
 
-export async function analyzeRepository(body: unknown): Promise<RepositoryAnalysisResult> {
+export async function analyzeRepository(body: unknown, signal?: AbortSignal): Promise<RepositoryAnalysisResult> {
   await cleanExpiredCache()
   const input = (body ?? {}) as Record<string, unknown>
   const repo = parseRepositorySource(input.source)
@@ -280,8 +280,9 @@ export async function analyzeRepository(body: unknown): Promise<RepositoryAnalys
     const result = await run(
       'git',
       ['clone', '--depth', '1', '--single-branch', '--filter=blob:none', '--', `https://github.com/${repo}.git`, cloneDir],
-      { cwd: tmpDir, timeoutMs: CLONE_TIMEOUT_MS },
+      { cwd: tmpDir, timeoutMs: CLONE_TIMEOUT_MS, signal, env: { GIT_TERMINAL_PROMPT: '0' } },
     )
+    if (signal?.aborted) throw new HttpError(499, '操作已取消')
     if (result.code !== 0) throw new HttpError(502, '无法读取 GitHub 仓库，请确认地址有效且仓库可访问')
 
     const directories = await findSkillDirectories(cloneDir)
@@ -315,6 +316,13 @@ export async function analyzeRepository(body: unknown): Promise<RepositoryAnalys
     analyzing = false
     if (tmpDir && !cached) await rm(tmpDir, { recursive: true, force: true }).catch(() => {})
   }
+}
+
+export async function discardRepositoryAnalysis(inspectId: string): Promise<void> {
+  const cached = repositoryCache.get(inspectId)
+  if (!cached) return
+  repositoryCache.delete(inspectId)
+  await rm(cached.tmpDir, { recursive: true, force: true }).catch(() => {})
 }
 
 export async function installRepositorySkills(body: unknown): Promise<{ results: RepositoryInstallResult[] }> {

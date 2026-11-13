@@ -20,6 +20,15 @@ export interface RecommendedSkill {
   description?: string
 }
 
+export interface FavoriteSkill {
+  name: string
+  source: string
+  slug: string
+  installs?: number
+  description?: string
+  addedAt?: string
+}
+
 export interface SkillSearchResult {
   name: string
   slug: string
@@ -141,8 +150,24 @@ export const api = {
   getSkill: (name: string) => request<SkillDetail>(`/api/skills/${encodeURIComponent(name)}`),
   getSkillFile: (name: string, filePath: string) =>
     request<SkillFileContent>(`/api/skills/${encodeURIComponent(name)}/file?path=${encodeURIComponent(filePath)}`),
+  saveSkillFile: (name: string, filePath: string, content: string, original: string) =>
+    request<{ ok: boolean }>(`/api/skills/${encodeURIComponent(name)}/file?path=${encodeURIComponent(filePath)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ content, original }),
+    }),
   getRecommendedSkills: () =>
     request<{ skills: RecommendedSkill[] }>('/api/skills/recommended').then((r) => r.skills),
+  getFavorites: () =>
+    request<{ favorites: FavoriteSkill[] }>('/api/skills/favorites').then((r) => r.favorites),
+  addFavorite: (skill: FavoriteSkill) =>
+    request<{ favorites: FavoriteSkill[] }>('/api/skills/favorites', {
+      method: 'POST',
+      body: JSON.stringify(skill),
+    }).then((r) => r.favorites),
+  removeFavorite: (name: string) =>
+    request<{ favorites: FavoriteSkill[] }>(`/api/skills/favorites/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    }).then((r) => r.favorites),
   searchSkills: (query: string) =>
     request<{ skills: SkillSearchResult[] }>(`/api/skills/search?q=${encodeURIComponent(query)}`).then((r) => r.skills),
   analyzeRepository: (source: string) =>

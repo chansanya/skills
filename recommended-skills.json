@@ -114,12 +114,6 @@
     "description": "项目版本待发布事项自动生成与更新"
   },
   {
-    "name": "sandbox-sdk",
-    "query": "sandbox-sdk",
-    "source": "local",
-    "description": "安全代码沙箱执行 SDK"
-  },
-  {
     "name": "tdd",
     "query": "tdd",
     "source": "mattpocock/skills",
@@ -130,12 +124,6 @@
     "query": "turnstile-spin",
     "source": "cloudflare",
     "description": "Cloudflare Turnstile 人机验证端到端集成"
-  },
-  {
-    "name": "web-perf",
-    "query": "web-perf",
-    "source": "local",
-    "description": "Chrome DevTools MCP 网页性能与 Core Web Vitals 分析"
   },
   {
     "name": "workers-best-practices",

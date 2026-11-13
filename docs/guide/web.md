@@ -55,6 +55,7 @@ npm run dev
 
 - **Skill 列表与检索**：按名称、目录或描述关键字过滤本地 Skill。
 - **全文件在线查看**：右侧文件树展示 `SKILL.md` 与 `resources/`、`scripts/`、`references/` 等所有文件，点击任意文件即可在线查看；`.md` 文件支持**预览 / 源码**切换，脚本与配置文件以等宽代码块展示，二进制或超过 `512 KB` 的文件会给出明确提示。
+- **编辑文本文件**：在 Markdown 源码视图或其他文本文件中点击「编辑」，修改后保存。切换文件时会提示未保存内容；保存前会检查文件是否被外部修改。仅支持 512 KB 以内的 UTF-8 文本文件。
 - **多方式导入 Skill**：
   - **在线导入**：支持按名称搜索 Skills 市场，或输入 GitHub 仓库地址分析并批量勾选导入；
   - **本地文件夹**：直接选择本地文件夹上传导入（支持自定义目录名与覆盖）；
@@ -74,7 +75,8 @@ npm run dev
 | `POST` | `/api/skills/repository/install` | 批量导入仓库分析结果中的选定 Skill |
 | `GET` | `/api/skills/:name` | 返回 `SKILL.md` 完整内容与文件树 |
 | `GET` | `/api/skills/:name/file?path=...` | 读取 Skill 目录内指定文件的文本内容 |
-| `POST` | `/api/skills/install` | 通过 `npx skills` 安装 Skill（SSE 实时日志流） |
+| `PUT` | `/api/skills/:name/file?path=...` | 保存文本文件，携带原始内容用于检测外部修改 |
+| `POST` | `/api/skills/install` | 从 GitHub 仓库安装指定 Skill（SSE 实时日志流） |
 | `POST` | `/api/skills/import-folder` | 上传本地文件夹导入 Skill（`multipart/form-data`） |
 | `POST` | `/api/skills/import-archive` | 上传 `.zip` / `.tar.gz` / `.tgz` 导入 Skill |
 | `GET` | `/api/agents/targets` | 检测并返回预置 Agent 全局目录状态 |
@@ -86,11 +88,7 @@ npm run dev
 { "source": "vercel-labs/agent-skills", "skill": "web-design-guidelines", "overwrite": false }
 ```
 
-`source` 支持 `owner/repo`、`https://github.com/<owner>/<repo>` 或 `https://skills.sh/<owner>/<repo>[/<skill>]`。服务端在临时目录执行：
-
-```bash
-npx --yes skills add <owner/repo> --skill <name> --agent claude-code --copy -y
-```
+`source` 支持 `owner/repo`、GitHub 仓库地址或 `skills.sh` 技能链接。服务端通过 Git 获取并分析对应的 GitHub 仓库，按名称定位 Skill。
 
 校验无符号链接且 `SKILL.md` Frontmatter 合法后，通过同文件系统暂存实现原子写入或覆盖。响应为 `text/event-stream`，事件类型：`log`、`done`、`error`。
 

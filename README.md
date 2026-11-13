@@ -48,5 +48,5 @@ npm run docs:build   # 构建文档到 docs/.vuepress/dist
 ## 安全说明
 
 - API 服务仅绑定 `127.0.0.1`，并校验 `Host` / `Origin` 请求头，不要暴露到公网。
-- 所有 `npx skills` 调用均使用参数数组（`spawn` with `shell: false`），不经过 shell。
+- GitHub 仓库通过 `git` 参数数组调用下载，不经过 shell。
 - 导入（`skills.sh`、本地文件夹、压缩包）与同步到 Agent 目录均会拦截符号链接与路径穿越，覆盖操作采用临时暂存与原子替换。

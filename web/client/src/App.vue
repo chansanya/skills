@@ -15,6 +15,7 @@ const detail = ref<Detail | null>(null)
 const detailLoading = ref(false)
 const showImport = ref(false)
 const showSyncAgents = ref(false)
+const skillDetailRef = ref<InstanceType<typeof SkillDetail> | null>(null)
 
 const filtered = computed(() => {
   const q = query.value.trim().toLowerCase()
@@ -37,6 +38,8 @@ async function load() {
 }
 
 async function select(dir: string) {
+  if (dir === selected.value && detail.value?.dir === dir) return
+  if (dir !== selected.value && skillDetailRef.value && !skillDetailRef.value.confirmDiscard()) return
   selected.value = dir
   detailLoading.value = true
   try {
@@ -49,9 +52,22 @@ async function select(dir: string) {
   }
 }
 
+async function onFileSaved() {
+  const dir = selected.value
+  if (!dir) return
+  try {
+    const [updated, summaries] = await Promise.all([api.getSkill(dir), api.listSkills()])
+    skills.value = summaries
+    if (selected.value === dir) detail.value = updated
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
 async function onInstalled(name: string) {
   await load()
-  await select(name)
+  if (name === selected.value) await onFileSaved()
+  else await select(name)
 }
 
 onMounted(load)
@@ -91,7 +107,7 @@ onMounted(load)
 
       <main class="content">
         <div v-if="detailLoading" class="placeholder muted"><Loader2 :size="18" class="spin" />加载中…</div>
-        <SkillDetail v-else-if="detail" :skill="detail" />
+        <SkillDetail v-else-if="detail" ref="skillDetailRef" :skill="detail" @saved="onFileSaved" />
         <div v-else class="placeholder muted">选择左侧的 Skill 查看详情</div>
       </main>
     </div>

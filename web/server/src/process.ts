@@ -17,11 +17,8 @@ export interface RunOptions {
   onData?: (chunk: string) => void
 }
 
-const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07|\x1b[@-_]/g
 const DEFAULT_MAX_OUTPUT_BYTES = 1024 * 1024 // 1 MiB
 const KILL_GRACE_MS = 2000
-
-export const stripAnsi = (s: string): string => s.replace(ANSI_RE, '')
 
 function killTree(pid: number | undefined, sig: NodeJS.Signals): void {
   if (!pid) return

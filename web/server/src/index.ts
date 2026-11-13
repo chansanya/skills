@@ -8,7 +8,8 @@ import { importArchive, importFolder, uploadMiddleware } from './import.js'
 import { inspectSkill, installInspected, installSkill, validateInstall } from './install.js'
 import { analyzeRepository, installRepositorySkills } from './repository.js'
 import { searchSkills } from './search.js'
-import { getSkill, getSkillFile, listSkills } from './skills.js'
+import { addFavorite, listFavorites, removeFavorite } from './favorites.js'
+import { getSkill, getSkillFile, listSkills, saveSkillFile } from './skills.js'
 
 const ALLOWED_HOSTS = new Set(['127.0.0.1', 'localhost'])
 
@@ -33,6 +34,7 @@ app.use((req, res, next) => {
   next()
 })
 
+app.use('/api/skills/:name/file', express.json({ limit: '2mb' }))
 app.use(express.json({ limit: '32kb' }))
 
 app.get('/api/skills', async (_req, res) => {
@@ -54,6 +56,18 @@ app.get('/api/skills/recommended', async (_req, res) => {
   }
 })
 
+app.get('/api/skills/favorites', async (_req, res) => {
+  res.json({ favorites: await listFavorites() })
+})
+
+app.post('/api/skills/favorites', async (req, res) => {
+  res.json({ favorites: await addFavorite(req.body) })
+})
+
+app.delete('/api/skills/favorites/:name', async (req, res) => {
+  res.json({ favorites: await removeFavorite(req.params.name) })
+})
+
 app.post('/api/skills/repository/inspect', async (req, res) => {
   res.json(await analyzeRepository(req.body))
 })
@@ -68,6 +82,18 @@ app.get('/api/skills/:name/file', async (req, res) => {
   const file = await getSkillFile(req.params.name, filePath)
   if (!file) throw new HttpError(404, `未找到文件：${filePath}`)
   res.json(file)
+})
+
+app.put('/api/skills/:name/file', async (req, res) => {
+  const origin = req.headers.origin
+  const allowedOrigins = new Set(['http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:3001', 'http://localhost:3001'])
+  if (!origin || !allowedOrigins.has(origin) || (req.headers['sec-fetch-site'] && req.headers['sec-fetch-site'] !== 'same-origin')) {
+    throw new HttpError(403, '不允许从当前来源编辑文件')
+  }
+  if (!req.is('application/json')) throw new HttpError(415, '请求必须使用 application/json')
+  const filePath = typeof req.query.path === 'string' ? req.query.path : ''
+  await saveSkillFile(req.params.name, filePath, req.body?.content, req.body?.original)
+  res.json({ ok: true })
 })
 
 app.get('/api/skills/:name', async (req, res) => {

@@ -39,5 +39,5 @@ description: >-
 
 ## 与 `skills.sh` 生态的关系
 
-- **收录外部 Skill**：在 Web 管理台的「导入」面板使用「Skills 搜索」或「GitHub 仓库」，输入 `owner/repo`、GitHub URL 或 `skills.sh` 链接；服务端在需要时调用 `npx --yes skills add <source> --skill <name> --copy -y`，再把结果移动到仓库根目录 `<skill-name>/`。
+- **收录外部 Skill**：在 Web 管理台的「导入」面板使用「Skills 搜索」或「GitHub 仓库」，输入 `owner/repo`、GitHub URL 或 `skills.sh` 链接；服务端直接获取并分析 GitHub 仓库，确认后将选中的 Skill 写入仓库根目录 `<skill-name>/`。
 - **作为 Skill 源**：本仓库推送到 GitHub 后，其他项目可通过 `npx skills add <owner>/skills --skill <name>` 安装其中的 Skill。

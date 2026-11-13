@@ -1,7 +1,9 @@
-import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { chmod, lstat, open, readdir, readFile, realpath, rename, stat, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { IGNORED_DIRS, REPO_ROOT, SKILL_NAME_RE } from './config.js'
+import { HttpError } from './errors.js'
 
 export interface FileNode {
   name: string
@@ -121,6 +123,7 @@ export interface SkillFileContent {
 }
 
 const MAX_VIEW_FILE_BYTES = 512 * 1024 // 512 KB
+const savingFiles = new Set<string>()
 
 export async function skillExists(name: string): Promise<boolean> {
   return (await skillDirs()).includes(name)
@@ -167,4 +170,57 @@ export async function getSkillFile(nameOrDir: string, rawRelPath: string): Promi
   }
 
   return { path: segments.join('/'), size, binary: false, tooLarge: false, content: buf.toString('utf8') }
+}
+
+export async function saveSkillFile(nameOrDir: string, rawRelPath: string, content: unknown, original: unknown): Promise<void> {
+  if (typeof content !== 'string' || typeof original !== 'string') throw new HttpError(400, '缺少文件内容或原始内容')
+  if (Buffer.byteLength(content, 'utf8') > MAX_VIEW_FILE_BYTES || Buffer.byteLength(original, 'utf8') > MAX_VIEW_FILE_BYTES) {
+    throw new HttpError(413, '文件内容超过 512 KB 限制')
+  }
+  if (content.includes('\0') || original.includes('\0')) throw new HttpError(400, '不能编辑二进制文件')
+  const dirs = await skillDirs()
+  if (!dirs.includes(nameOrDir)) throw new HttpError(404, '未找到 Skill 目录')
+  const normalized = rawRelPath.replace(/\\/g, '/')
+  const segments = normalized.split('/')
+  if (!normalized || normalized.startsWith('/') || normalized.includes('\0') || segments.some((s) => !s || s === '.' || s === '..' || s.startsWith('.') || s === 'node_modules')) {
+    throw new HttpError(400, '非法文件路径')
+  }
+  const root = path.join(REPO_ROOT, nameOrDir)
+  const rootInfo = await lstat(root).catch(() => null)
+  if (!rootInfo?.isDirectory() || rootInfo.isSymbolicLink()) throw new HttpError(400, 'Skill 目录不安全')
+  let current = root
+  for (const segment of segments) {
+    current = path.join(current, segment)
+    const info = await lstat(current).catch(() => null)
+    if (!info || info.isSymbolicLink()) throw new HttpError(400, '文件不存在或包含符号链接')
+  }
+  const rootReal = await realpath(root)
+  const fileReal = await realpath(current)
+  if (!fileReal.startsWith(rootReal + path.sep)) throw new HttpError(400, '文件路径越界')
+  if (savingFiles.has(fileReal)) throw new HttpError(409, '文件正在保存，请稍后重试')
+  savingFiles.add(fileReal)
+  try {
+    const info = await lstat(current)
+    if (!info.isFile() || info.size > MAX_VIEW_FILE_BYTES) throw new HttpError(400, '只能编辑 512 KB 以内的普通文件')
+    const bytes = await readFile(current)
+    if (bytes.includes(0)) throw new HttpError(400, '不能编辑二进制文件')
+    let diskContent: string
+    try { diskContent = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes) } catch { throw new HttpError(400, '只能编辑 UTF-8 文本文件') }
+    if (diskContent !== original) throw new HttpError(409, '文件已被外部修改，请复制当前编辑内容后重新加载')
+    const temporary = path.join(path.dirname(current), `.skills-edit-${randomUUID()}.tmp`)
+    try {
+      const handle = await open(temporary, 'wx', info.mode)
+      try { await handle.writeFile(content, 'utf8') } finally { await handle.close() }
+      await chmod(temporary, info.mode)
+      const latest = await lstat(current)
+      if (!latest.isFile() || latest.isSymbolicLink() || latest.ino !== info.ino || latest.mtimeMs !== info.mtimeMs || latest.size !== info.size) {
+        throw new HttpError(409, '文件已被外部修改，请复制当前编辑内容后重新加载')
+      }
+      await rename(temporary, current)
+    } finally {
+      await unlink(temporary).catch(() => {})
+    }
+  } finally {
+    savingFiles.delete(fileReal)
+  }
 }

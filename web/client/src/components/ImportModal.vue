@@ -15,10 +15,13 @@ import {
   HelpCircle,
   Loader2,
   Search,
+  Star,
+  Trash2,
   X,
 } from 'lucide-vue-next'
 import {
   api,
+  type FavoriteSkill,
   type InspectResult,
   type RecommendedSkill,
   type RepositoryAnalysisResult,
@@ -27,7 +30,7 @@ import {
   type SkillSearchResult,
 } from '../api'
 
-type Tab = 'remote' | 'folder' | 'archive'
+type Tab = 'remote' | 'favorites' | 'folder' | 'archive'
 type RemoteSource = 'skills' | 'github'
 
 const emit = defineEmits<{ close: []; installed: [name: string] }>()
@@ -41,6 +44,8 @@ const selectedSearchResult = ref<SkillSearchResult | null>(null)
 const searchCompleted = ref(false)
 const recommendedSkills = ref<RecommendedSkill[]>([])
 const localSkillNames = ref<Set<string>>(new Set())
+const favorites = ref<FavoriteSkill[]>([])
+const favoriteFilter = ref('')
 const repositoryAnalysis = ref<RepositoryAnalysisResult | null>(null)
 const selectedRepositorySkills = ref<string[]>([])
 const repositoryMetadataMode = ref<'normalize' | 'preserve'>('normalize')
@@ -64,6 +69,16 @@ const canSearch = computed(() => !busy.value && !!searchQuery.value.trim())
 const uninstalledRecommendedSkills = computed(() =>
   recommendedSkills.value.filter((rec) => !localSkillNames.value.has(rec.name)),
 )
+const filteredFavorites = computed(() => {
+  const q = favoriteFilter.value.trim().toLowerCase()
+  if (!q) return favorites.value
+  return favorites.value.filter(
+    (f) =>
+      f.name.toLowerCase().includes(q) ||
+      f.source.toLowerCase().includes(q) ||
+      (f.description && f.description.toLowerCase().includes(q)),
+  )
+})
 const repositoryImportableSkills = computed(() =>
   repositoryAnalysis.value?.skills.filter((item) => item.status !== 'invalid') ?? [],
 )
@@ -140,6 +155,11 @@ function switchTab(next: Tab) {
   if (busy.value) return
   tab.value = next
   resetInspect()
+  if (next === 'favorites') {
+    api.getFavorites().then((favs) => {
+      favorites.value = favs
+    }).catch(() => {})
+  }
 }
 
 function switchRemoteSource(next: RemoteSource) {
@@ -206,16 +226,72 @@ function onArchivePick(e: Event) {
 
 onMounted(async () => {
   try {
-    const [skills, recommended] = await Promise.all([
+    const [skills, recommended, favs] = await Promise.all([
       api.listSkills(),
       api.getRecommendedSkills(),
+      api.getFavorites(),
     ])
     localSkillNames.value = new Set((skills as SkillSummary[]).map((s) => s.name))
     recommendedSkills.value = recommended
+    favorites.value = favs
   } catch {
     recommendedSkills.value = []
+    favorites.value = []
   }
 })
+
+function isFavorite(name: string): boolean {
+  return favorites.value.some((f) => f.name.toLowerCase() === name.toLowerCase())
+}
+
+async function toggleFavorite(result: SkillSearchResult) {
+  if (busy.value) return
+  const exists = isFavorite(result.name)
+  clearMessages()
+  try {
+    if (exists) {
+      favorites.value = await api.removeFavorite(result.name)
+    } else {
+      favorites.value = await api.addFavorite({
+        name: result.name,
+        source: result.source,
+        slug: result.slug,
+        installs: result.installs,
+      })
+    }
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+async function handleRemoveFavorite(name: string) {
+  if (busy.value) return
+  clearMessages()
+  try {
+    favorites.value = await api.removeFavorite(name)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+async function installFromFavorite(fav: FavoriteSkill) {
+  if (busy.value) return
+  inspecting.value = true
+  clearMessages()
+  try {
+    const res = await api.inspectSkill({
+      source: fav.source,
+      skill: fav.name,
+    })
+    inspected.value = res
+    overwrite.value = res.existsLocally
+    tab.value = 'remote'
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    inspecting.value = false
+  }
+}
 
 async function selectRecommended(rec: RecommendedSkill) {
   if (busy.value) return
@@ -326,14 +402,17 @@ async function submit() {
         overwrite: overwrite.value,
       })
       success.value = `已成功导入 Skill：${r.name}`
+      localSkillNames.value.add(r.name)
       emit('installed', r.name)
     } else if (tab.value === 'folder') {
       const r = await api.importFolder(folderFiles.value, customName.value.trim() || undefined, overwrite.value)
       success.value = `${r.replaced ? '已覆盖并导入' : '已导入'} ${r.name}`
+      localSkillNames.value.add(r.name)
       emit('installed', r.name)
     } else if (archiveFile.value) {
       const r = await api.importArchive(archiveFile.value, customName.value.trim() || undefined, overwrite.value)
       success.value = `${r.replaced ? '已覆盖并导入' : '已导入'} ${r.name}`
+      localSkillNames.value.add(r.name)
       emit('installed', r.name)
     }
   } catch (e) {
@@ -359,6 +438,10 @@ function close() {
       <div class="tabs">
         <button type="button" class="tab" :class="{ active: tab === 'remote' }" :disabled="busy" @click="switchTab('remote')">
           <Globe :size="14" />在线导入
+        </button>
+        <button type="button" class="tab" :class="{ active: tab === 'favorites' }" :disabled="busy" @click="switchTab('favorites')">
+          <Star :size="14" />技能收藏
+          <span v-if="favorites.length" class="tab-badge">{{ favorites.length }}</span>
         </button>
         <button type="button" class="tab" :class="{ active: tab === 'folder' }" :disabled="busy" @click="switchTab('folder')">
           <FolderOpen :size="14" />本地文件夹
@@ -467,6 +550,15 @@ function close() {
                     </span>
                     <span class="result-side">
                       <span class="install-count">{{ formatInstalls(result.installs) }} 次安装</span>
+                      <button
+                        type="button"
+                        class="btn-fav"
+                        :class="{ 'is-fav': isFavorite(result.name) }"
+                        :title="isFavorite(result.name) ? '取消收藏' : '收藏此 Skill'"
+                        @click.stop="toggleFavorite(result)"
+                      >
+                        <Star :size="14" :fill="isFavorite(result.name) ? 'currentColor' : 'none'" />
+                      </button>
                       <CheckCircle2 v-if="selectedSearchResult?.slug === result.slug" :size="17" />
                     </span>
                   </button>
@@ -652,7 +744,81 @@ function close() {
           </template>
         </template>
 
-        <!-- 标签页 2：本地文件夹 -->
+        <!-- 标签页 2：技能收藏 -->
+        <template v-else-if="tab === 'favorites'">
+          <div class="favorites-wrap">
+            <div class="field">
+              <label>筛选我的收藏</label>
+              <input
+                v-model="favoriteFilter"
+                placeholder="搜索技能名称、来源仓库或描述..."
+                :disabled="busy"
+              />
+              <span class="hint muted">
+                共 {{ favorites.length }} 个收藏，其中 {{ favorites.filter(f => localSkillNames.has(f.name)).length }} 个已安装本地。
+                （收藏内容保存在根目录 favorites.json，已被 Git 忽略，不会提交到远程）
+              </span>
+            </div>
+
+            <div v-if="!favorites.length" class="empty-fav-box">
+              <Star :size="36" class="empty-fav-icon" />
+              <p>暂无收藏的技能</p>
+              <span class="hint muted">在「在线导入」搜索技能时，点击右侧的 ⭐ 即可收藏到此处，便于日后随时一键同步到本地。</span>
+            </div>
+
+            <div v-else-if="!filteredFavorites.length" class="empty-fav-box">
+              <p>未找到符合「{{ favoriteFilter }}」的收藏技能</p>
+            </div>
+
+            <div v-else class="favorites-cards">
+              <div
+                v-for="fav in filteredFavorites"
+                :key="fav.name"
+                class="favorite-card"
+              >
+                <div class="favorite-main">
+                  <div class="fav-header-line">
+                    <strong class="mono fav-title">{{ fav.name }}</strong>
+                    <span
+                      class="fav-status-badge"
+                      :class="localSkillNames.has(fav.name) ? 'status-installed' : 'status-uninstalled'"
+                    >
+                      {{ localSkillNames.has(fav.name) ? '已安装' : '未安装' }}
+                    </span>
+                  </div>
+                  <div class="fav-sub-line mono muted">
+                    <span>{{ fav.source }}</span>
+                    <span v-if="fav.installs">· {{ formatInstalls(fav.installs) }} 次安装</span>
+                  </div>
+                  <div v-if="fav.description" class="fav-desc muted">{{ fav.description }}</div>
+                </div>
+
+                <div class="favorite-actions">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary"
+                    :disabled="busy"
+                    @click="installFromFavorite(fav)"
+                  >
+                    <Download :size="13" />
+                    {{ localSkillNames.has(fav.name) ? '重新安装' : '安装到本地' }}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-icon btn-ghost-danger"
+                    :disabled="busy"
+                    title="移除此收藏"
+                    @click="handleRemoveFavorite(fav.name)"
+                  >
+                    <Trash2 :size="14" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- 标签页 3：本地文件夹 -->
         <template v-else-if="tab === 'folder'">
           <div class="help-box">
             <div class="help-title"><HelpCircle :size="14" /><strong>文件夹结构要求：</strong></div>
@@ -749,6 +915,10 @@ function close() {
           <button class="btn" :disabled="running" @click="close">取消</button>
         </template>
 
+        <template v-else-if="tab === 'favorites'">
+          <button class="btn" :disabled="busy" @click="close">关闭</button>
+        </template>
+
         <template v-else>
           <button class="btn btn-primary" :disabled="!canSubmit || running" @click="submit">
             <Loader2 v-if="running" :size="15" class="spin" />
@@ -771,6 +941,20 @@ function close() {
   border: 0; border-bottom: 2px solid transparent; color: var(--muted); cursor: pointer; white-space: nowrap;
 }
 .tab.active { color: inherit; border-bottom-color: var(--accent, #58a6ff); font-weight: 600; }
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  font-size: 10px;
+  height: 16px;
+  min-width: 16px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  line-height: 1;
+}
 .help-box {
   background: var(--panel-2, rgba(255, 255, 255, 0.04));
   border: 1px solid var(--border);
@@ -939,6 +1123,27 @@ function close() {
 .result-main strong, .result-main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .result-main span { font-size: 11px; }
 .result-side { display: flex; align-items: center; gap: 8px; flex-shrink: 0; color: var(--accent); }
+.btn-fav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+.btn-fav:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f59e0b;
+}
+.btn-fav.is-fav {
+  color: #f59e0b;
+}
 .install-count { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .repository-panel {
   border: 1px solid var(--border);
@@ -1141,6 +1346,111 @@ function close() {
 }
 .status-ok { background: rgba(63, 185, 80, 0.1); color: #3fb950; }
 .status-warn { background: rgba(240, 180, 41, 0.12); color: #f0b429; }
+
+.favorites-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.empty-fav-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 36px 20px;
+  background: var(--panel-2);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  gap: 8px;
+}
+.empty-fav-icon {
+  color: var(--muted);
+  opacity: 0.5;
+  margin-bottom: 4px;
+}
+.favorites-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.favorite-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  transition: border-color 0.15s;
+}
+.favorite-card:hover {
+  border-color: rgba(79, 140, 255, 0.4);
+}
+.favorite-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+.fav-header-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fav-title {
+  font-size: 14px;
+  color: var(--text);
+}
+.fav-status-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+.status-installed {
+  background: rgba(46, 160, 67, 0.15);
+  color: #3fb950;
+  border: 1px solid rgba(46, 160, 67, 0.3);
+}
+.status-uninstalled {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.fav-sub-line {
+  font-size: 11px;
+}
+.fav-desc {
+  font-size: 12px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.favorite-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.btn-ghost-danger {
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+}
+.btn-ghost-danger:hover {
+  color: #f85149;
+  background: rgba(248, 81, 73, 0.1);
+  border-color: rgba(248, 81, 73, 0.3);
+}
 
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

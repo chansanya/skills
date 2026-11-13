@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import { Code, Eye, FileText, FolderTree } from 'lucide-vue-next'
+import { Code, Eye, FileText, FolderTree, Pencil, Save, X } from 'lucide-vue-next'
 import { api, type SkillDetail, type SkillFileContent } from '../api'
 import FileTree from './FileTree.vue'
 
 const props = defineProps<{ skill: SkillDetail }>()
+const emit = defineEmits<{ saved: [] }>()
 
 const selectedPath = ref('SKILL.md')
 const rawMode = ref(false)
@@ -14,10 +15,76 @@ const fileLoading = ref(false)
 const fileError = ref('')
 const loadedFile = ref<SkillFileContent | null>(null)
 let requestSeq = 0
+const editing = ref(false)
+const saving = ref(false)
+const draft = ref('')
+const original = ref('')
+const editError = ref('')
+const dirty = computed(() => editing.value && draft.value !== original.value)
+
+function confirmDiscard(): boolean {
+  return !saving.value && (!dirty.value || window.confirm('当前文件有未保存的修改，确定放弃吗？'))
+}
+defineExpose({ confirmDiscard })
+
+function beforeUnload(event: BeforeUnloadEvent) {
+  if (dirty.value || saving.value) event.preventDefault()
+}
+onMounted(() => window.addEventListener('beforeunload', beforeUnload))
+onUnmounted(() => window.removeEventListener('beforeunload', beforeUnload))
+
+async function startEdit() {
+  if (fileLoading.value || saving.value) return
+  fileLoading.value = true
+  editError.value = ''
+  const seq = ++requestSeq
+  try {
+    const file = await api.getSkillFile(props.skill.dir, selectedPath.value)
+    if (seq !== requestSeq) return
+    if (file.binary || file.tooLarge || file.content === null) {
+      editError.value = '该文件不是可编辑的文本文件'
+      return
+    }
+    draft.value = file.content
+    original.value = file.content
+    editing.value = true
+  } catch (err) {
+    if (seq === requestSeq) editError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    if (seq === requestSeq) fileLoading.value = false
+  }
+}
+
+function cancelEdit() {
+  if (!confirmDiscard()) return
+  editing.value = false
+  editError.value = ''
+}
+
+async function saveEdit() {
+  if (saving.value || !dirty.value) return
+  saving.value = true
+  editError.value = ''
+  try {
+    await api.saveSkillFile(props.skill.dir, selectedPath.value, draft.value, original.value)
+    if (selectedPath.value !== 'SKILL.md' && loadedFile.value) {
+      loadedFile.value = { ...loadedFile.value, content: draft.value, size: new TextEncoder().encode(draft.value).length }
+    }
+    original.value = draft.value
+    editing.value = false
+    emit('saved')
+  } catch (err) {
+    editError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    saving.value = false
+  }
+}
 
 watch(
   () => props.skill.dir,
   () => {
+    editing.value = false
+    editError.value = ''
     selectedPath.value = 'SKILL.md'
     rawMode.value = false
     loadedFile.value = null
@@ -42,6 +109,11 @@ const renderedHtml = computed(() => {
 })
 
 async function selectFile(filePath: string) {
+  if (filePath === selectedPath.value) return
+  if (!confirmDiscard()) return
+  editing.value = false
+  editError.value = ''
+  requestSeq++
   selectedPath.value = filePath
   rawMode.value = false
   fileError.value = ''
@@ -79,8 +151,9 @@ async function selectFile(filePath: string) {
       <section class="card markdown-card">
         <div class="card-head">
           <h3><FileText :size="15" />{{ selectedPath }}</h3>
+          <div class="actions">
           <button
-            v-if="isMarkdown && !fileLoading && !fileError && (selectedPath === 'SKILL.md' || loadedFile?.content !== null)"
+            v-if="isMarkdown && !editing && !fileLoading && !fileError && (selectedPath === 'SKILL.md' || loadedFile?.content !== null)"
             type="button"
             class="toggle-btn"
             @click="rawMode = !rawMode"
@@ -89,12 +162,20 @@ async function selectFile(filePath: string) {
             <Eye v-else :size="13" />
             <span>{{ rawMode ? '预览' : '源码' }}</span>
           </button>
+          <button v-if="!editing && (!isMarkdown || rawMode) && !fileLoading && !fileError && !loadedFile?.binary && !loadedFile?.tooLarge && (selectedPath === 'SKILL.md' || loadedFile?.content != null)" type="button" class="toggle-btn" @click="startEdit"><Pencil :size="13" />编辑</button>
+          <template v-if="editing">
+            <button type="button" class="toggle-btn" :disabled="saving" @click="cancelEdit"><X :size="13" />取消</button>
+            <button type="button" class="toggle-btn save-btn" :disabled="saving || !dirty" @click="saveEdit"><Save :size="13" />{{ saving ? '保存中…' : '保存' }}</button>
+          </template>
+          </div>
         </div>
 
+        <p v-if="editError" class="err state-msg" role="alert">{{ editError }}</p>
         <p v-if="fileLoading" class="muted state-msg">正在加载文件内容…</p>
         <p v-else-if="fileError" class="err state-msg">{{ fileError }}</p>
         <p v-else-if="loadedFile?.tooLarge" class="muted state-msg">文件过大（超过 512 KB），暂不支持在线预览。</p>
         <p v-else-if="loadedFile?.binary" class="muted state-msg">二进制文件暂不支持文本预览。</p>
+        <textarea v-else-if="editing" v-model="draft" class="code-editor mono" :disabled="saving" aria-label="编辑文件源码" spellcheck="false" />
         <div v-else-if="isMarkdown && !rawMode" class="markdown" v-html="renderedHtml" />
         <pre v-else class="code-viewer"><code class="mono">{{ activeText }}</code></pre>
       </section>
@@ -117,6 +198,7 @@ async function selectFile(filePath: string) {
 .card-head h3 { margin: 0; }
 .card h3 { margin: 0 0 12px; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; font-weight: 600; }
 .card-head h3 { margin: 0; }
+.actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .toggle-btn {
   display: inline-flex;
   align-items: center;
@@ -130,6 +212,9 @@ async function selectFile(filePath: string) {
   cursor: pointer;
 }
 .toggle-btn:hover { color: inherit; border-color: var(--muted); }
+.toggle-btn:disabled { opacity: .5; cursor: not-allowed; }
+.save-btn { color: var(--accent); border-color: var(--accent); }
+.code-editor { min-height: 420px; resize: vertical; line-height: 1.55; font-size: 13px; white-space: pre; overflow: auto; tab-size: 2; }
 .state-msg { margin: 12px 0; font-size: 13px; }
 .err { color: var(--danger, #f85149); }
 .code-viewer {
