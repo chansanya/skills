@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { CheckCircle2, FolderSync, Loader2, Plus, X, XCircle } from 'lucide-vue-next'
+import { computed, onMounted, ref, watch } from 'vue'
+import { Check, CheckCircle2, FolderSync, Loader2, Plus, X, XCircle } from 'lucide-vue-next'
 import { api, type AgentTarget, type SkillSummary, type SyncMode, type TargetSyncResult } from '../api'
 
 const props = defineProps<{
@@ -91,6 +91,10 @@ async function loadTargets() {
   }
 }
 
+watch([selectedSkills, selectedTargets, overwrite, mode], () => {
+  if (results.value) results.value = null
+})
+
 async function submit() {
   if (syncing.value) return
   const allTargets = [...selectedTargets.value, ...customTargets.value]
@@ -113,6 +117,11 @@ async function submit() {
       overwrite: overwrite.value,
       mode: isCrossEnv.value ? 'copy' : mode.value,
     })
+    try {
+      targets.value = await api.listAgentTargets()
+    } catch {
+      // ignore
+    }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -267,12 +276,22 @@ onMounted(loadTargets)
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-primary" :disabled="syncing || !selectedSkills.length" @click="submit">
-          <Loader2 v-if="syncing" :size="15" class="spin" />
-          <FolderSync v-else :size="15" />
-          {{ syncing ? '同步中…' : '确认同步' }}
-        </button>
-        <button class="btn" :disabled="syncing" @click="close">关闭</button>
+        <template v-if="results">
+          <button class="btn btn-primary" @click="close">
+            <Check :size="15" />完成
+          </button>
+          <button class="btn" :disabled="syncing" @click="submit">
+            <FolderSync :size="14" />重新同步
+          </button>
+        </template>
+        <template v-else>
+          <button class="btn btn-primary" :disabled="syncing || !selectedSkills.length" @click="submit">
+            <Loader2 v-if="syncing" :size="15" class="spin" />
+            <FolderSync v-else :size="15" />
+            {{ syncing ? '同步中…' : '确认同步' }}
+          </button>
+          <button class="btn" :disabled="syncing" @click="close">关闭</button>
+        </template>
       </div>
     </div>
   </div>
