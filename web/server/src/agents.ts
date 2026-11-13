@@ -108,7 +108,7 @@ export async function validateAgentSync(body: unknown): Promise<SyncRequest> {
   }
 
   if (input.overwrite !== undefined && typeof input.overwrite !== 'boolean') throw badRequest('overwrite 必须为布尔值')
-  const mode = input.mode ?? 'copy'
+  const mode = input.mode ?? 'symlink'
   if (mode !== 'copy' && mode !== 'symlink') throw badRequest(`不支持的同步方式：${String(mode)}`)
   if (syncing) throw new HttpError(409, '已有同步任务正在进行')
 
