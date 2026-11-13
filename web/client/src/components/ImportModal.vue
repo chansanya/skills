@@ -23,6 +23,7 @@ import {
   type RecommendedSkill,
   type RepositoryAnalysisResult,
   type RepositoryInstallResult,
+  type SkillSummary,
   type SkillSearchResult,
 } from '../api'
 
@@ -39,6 +40,7 @@ const searchResults = ref<SkillSearchResult[]>([])
 const selectedSearchResult = ref<SkillSearchResult | null>(null)
 const searchCompleted = ref(false)
 const recommendedSkills = ref<RecommendedSkill[]>([])
+const localSkillNames = ref<Set<string>>(new Set())
 const repositoryAnalysis = ref<RepositoryAnalysisResult | null>(null)
 const selectedRepositorySkills = ref<string[]>([])
 const repositoryMetadataMode = ref<'normalize' | 'preserve'>('normalize')
@@ -59,6 +61,9 @@ const success = ref('')
 
 const busy = computed(() => running.value || inspecting.value || searching.value || analyzingRepository.value)
 const canSearch = computed(() => !busy.value && !!searchQuery.value.trim())
+const uninstalledRecommendedSkills = computed(() =>
+  recommendedSkills.value.filter((rec) => !localSkillNames.value.has(rec.name)),
+)
 const repositoryImportableSkills = computed(() =>
   repositoryAnalysis.value?.skills.filter((item) => item.status !== 'invalid') ?? [],
 )
@@ -201,7 +206,12 @@ function onArchivePick(e: Event) {
 
 onMounted(async () => {
   try {
-    recommendedSkills.value = await api.getRecommendedSkills()
+    const [skills, recommended] = await Promise.all([
+      api.listSkills(),
+      api.getRecommendedSkills(),
+    ])
+    localSkillNames.value = new Set((skills as SkillSummary[]).map((s) => s.name))
+    recommendedSkills.value = recommended
   } catch {
     recommendedSkills.value = []
   }
@@ -413,14 +423,14 @@ function close() {
                 <span class="hint muted">在 skills.sh 目录中检索，选择匹配项后预检导入。</span>
               </div>
 
-              <div v-if="recommendedSkills.length" class="recommended-panel">
+              <div v-if="uninstalledRecommendedSkills.length" class="recommended-panel">
                 <div class="recommended-header">
                   <span class="recommended-title">推荐技能 (点击直搜)：</span>
                   <span class="recommended-hint">根目录 recommended-skills.json 可编辑</span>
                 </div>
                 <div class="recommended-chips">
                   <button
-                    v-for="rec in recommendedSkills"
+                    v-for="rec in uninstalledRecommendedSkills"
                     :key="rec.name"
                     type="button"
                     class="recommended-chip"
