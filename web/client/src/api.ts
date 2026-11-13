@@ -34,6 +34,15 @@ export interface ImportResult {
   replaced: boolean
 }
 
+export interface InspectResult {
+  inspectId: string
+  name: string
+  description: string
+  repo: string
+  files: string[]
+  existsLocally: boolean
+}
+
 export type SyncMode = 'copy' | 'symlink'
 
 export interface AgentTarget {
@@ -95,6 +104,14 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }).then((r) => r.results),
+
+  inspectSkill: (payload: { source: string; skill?: string }) =>
+    request<InspectResult>('/api/skills/inspect', { method: 'POST', body: JSON.stringify(payload) }),
+  installInspected: (payload: { inspectId: string; overwrite: boolean }) =>
+    request<{ name: string; dir: string }>('/api/skills/install-inspected', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 
   importFolder: (files: File[], skillName: string | undefined, overwrite: boolean) => {
     const form = new FormData()

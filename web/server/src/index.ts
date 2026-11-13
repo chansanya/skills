@@ -3,7 +3,7 @@ import { listTargets, syncToAgents, validateAgentSync } from './agents.js'
 import { HOST, PORT, REPO_ROOT } from './config.js'
 import { HttpError } from './errors.js'
 import { importArchive, importFolder, uploadMiddleware } from './import.js'
-import { installSkill, validateInstall } from './install.js'
+import { inspectSkill, installInspected, installSkill, validateInstall } from './install.js'
 import { getSkill, getSkillFile, listSkills } from './skills.js'
 
 const ALLOWED_HOSTS = new Set(['127.0.0.1', 'localhost'])
@@ -47,6 +47,14 @@ app.get('/api/skills/:name', async (req, res) => {
   const skill = await getSkill(req.params.name)
   if (!skill) throw new HttpError(404, `未找到 Skill：${req.params.name}`)
   res.json(skill)
+})
+
+app.post('/api/skills/inspect', async (req, res) => {
+  res.json(await inspectSkill(req.body))
+})
+
+app.post('/api/skills/install-inspected', async (req, res) => {
+  res.json(await installInspected(req.body))
 })
 
 app.post('/api/skills/install', async (req, res) => {
