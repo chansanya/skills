@@ -60,11 +60,10 @@ npm run dev
   - **skills.sh / GitHub**：输入 `owner/repo`、GitHub / `skills.sh` 链接或 `npx skills add ...` 命令，通过 SSE 实时查看安装日志；
   - **本地文件夹**：直接选择本地文件夹上传导入（支持自定义目录名与覆盖）；
   - **压缩包**：上传 `.zip`、`.tar.gz` 或 `.tgz` 压缩包（最大 `20 MB`），自动校验 `SKILL.md` Frontmatter 并原子落盘。
-- **同步到 Agent 总目录（双环境支持）**：支持多选 Skill，一键下发（复制文件或软链接）到本地 Agent 全局目录，自动检测 **WSL Linux 环境** 与 **Windows 主机环境 (Host)**，并按环境分组展示：
-  - **🐧 WSL 环境 (Linux)**：`~/.claude/skills`、`~/.codex/skills`、`~/.agents/skills`、`~/.gemini/antigravity/skills`、`~/.cursor/skills` 等；
-  - **🪟 Windows 主机环境 (Host)**：`C:\Users\<user>\.claude\skills`、`C:\Users\<user>\.codex\skills`、`C:\Users\<user>\.agents\skills`、`C:\Users\<user>\.gemini\antigravity/skills` 等；
-  - **跨环境自动适配**：当从 WSL 下发到 Windows 主机目录且选择「软链接」时，系统自动转为「复制文件」模式，避免 Windows 原生应用因 Linux 符号链接路径无法解析而失效；
-  - **自定义目录**：支持额外添加自定义 `~/...` 或 Windows 盘符路径（如 `C:\...`）。
+- **同步到 Agent 总目录（WSL / 主机环境区分）**：支持多选 Skill，一键下发到本地 Agent 全局目录：
+  - **环境自适应**：在 WSL 环境下自动提供 `WSL` 与 `主机` 两个独立切换选项；在 macOS 或原生 Linux / Windows 环境下直接作为单主机的 `主机` 选项；
+  - **下发方式**：同环境（WSL 内或主机自身）默认采用高效的「软链接」（亦可切「复制文件」）；跨环境（WSL 下发至外部 Windows 主机）则移除软链接，强制采用「复制文件」，确保 Windows 原生应用兼容；
+  - **自定义目录**：支持在对应视图下额外添加自定义 `~/...` 或 Windows 盘符路径。
 
 ## API 参考
 

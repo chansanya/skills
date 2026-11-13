@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { CheckCircle2, FolderSync, Loader2, Plus, X, XCircle } from 'lucide-vue-next'
 import { api, type AgentTarget, type SkillSummary, type SyncMode, type TargetSyncResult } from '../api'
 
@@ -21,153 +21,14 @@ const mode = ref<SyncMode>('symlink')
 const syncing = ref(false)
 const error = ref('')
 const results = ref<TargetSyncResult[] | null>(null)
-const envTab = ref<'all' | 'wsl' | 'host'>('all')
+const envTab = ref<'wsl' | 'host'>('wsl')
 
 const wslTargets = computed(() => targets.value.filter((t) => t.env === 'wsl'))
 const hostTargets = computed(() => targets.value.filter((t) => t.env === 'host'))
+const hasWSL = computed(() => wslTargets.value.length > 0)
 const hasHost = computed(() => hostTargets.value.length > 0)
-
-const currentTabSelectedCount = computed(() => {
-  if (envTab.value === 'wsl') {
-    return wslTargets.value.filter((t) => selectedTargets.value.includes(t.id)).length
-  }
-  if (envTab.value === 'host') {
-    return hostTargets.value.filter((t) => selectedTargets.value.includes(t.id)).length
-  }
-  return selectedTargets.value.length + customTargets.value.length
-})
-
-const effectiveTargets = computed(() => {
-  let list = targets.value.filter((t) => selectedTargets.value.includes(t.id))
-  if (envTab.value === 'wsl') {
-    list = list.filter((t) => t.env === 'wsl')
-    return list.map((t) => t.id)
-  }
-  if (envTab.value === 'host') {
-    list = list.filter((t) => t.env === 'host')
-    const winCustom = customTargets.value.filter((c) => /^[a-zA-Z]:[/\\]/.test(c.trim()))
-    return [...list.map((t) => t.id), ...winCustom]
-  }
-  return [...list.map((t) => t.id), ...customTargets.value]
-})
-
-const hasCrossEnvSelected = computed(() => {
-  if (envTab.value === 'wsl') return false
-  if (envTab.value === 'host') return true
-  const customCross = customTargets.value.some((c) => /^[a-zA-Z]:[/\\]/.test(c.trim()))
-  const hostCross = hostTargets.value.some((t) => selectedTargets.value.includes(t.id))
-  return customCross || hostCross
-})
-
-watch(
-  hasCrossEnvSelected,
-  (cross) => {
-    if (cross) {
-      mode.value = 'copy'
-    } else {
-      mode.value = 'symlink'
-    }
-  },
-  { immediate: true },
-)
-
-function switchEnvTab(tab: 'all' | 'wsl' | 'host') {
-  envTab.value = tab
-  if (tab === 'wsl') {
-    const wslOnly = selectedTargets.value.filter((id) =>
-      wslTargets.value.some((t) => t.id === id),
-    )
-    selectedTargets.value = wslOnly.length
-      ? wslOnly
-      : wslTargets.value.filter((t) => t.parentExists || t.exists).map((t) => t.id)
-  } else if (tab === 'host') {
-    const hostOnly = selectedTargets.value.filter((id) =>
-      hostTargets.value.some((t) => t.id === id),
-    )
-    selectedTargets.value = hostOnly.length
-      ? hostOnly
-      : hostTargets.value.filter((t) => t.parentExists || t.exists).map((t) => t.id)
-  }
-}
-
-const displayedGroups = computed(() => {
-  const groups: {
-    key: 'wsl' | 'host'
-    title: string
-    icon: string
-    items: AgentTarget[]
-  }[] = []
-
-  if (envTab.value === 'all' || envTab.value === 'wsl') {
-    if (wslTargets.value.length) {
-      groups.push({ key: 'wsl', title: 'WSL 环境 (Linux)', icon: '🐧', items: wslTargets.value })
-    }
-  }
-  if (envTab.value === 'all' || envTab.value === 'host') {
-    if (hostTargets.value.length) {
-      groups.push({ key: 'host', title: 'Windows 主机环境 (Host)', icon: '🪟', items: hostTargets.value })
-    }
-  }
-  return groups
-})
-
-function selectAllDetected() {
-  if (envTab.value === 'wsl') {
-    const ids = wslTargets.value.filter((t) => t.parentExists || t.exists).map((t) => t.id)
-    selectedTargets.value = Array.from(new Set([...selectedTargets.value, ...ids]))
-  } else if (envTab.value === 'host') {
-    const ids = hostTargets.value.filter((t) => t.parentExists || t.exists).map((t) => t.id)
-    selectedTargets.value = Array.from(new Set([...selectedTargets.value, ...ids]))
-  } else {
-    const ids = targets.value.filter((t) => t.parentExists || t.exists).map((t) => t.id)
-    selectedTargets.value = Array.from(new Set([...selectedTargets.value, ...ids]))
-  }
-}
-
-function selectAllTargets() {
-  if (envTab.value === 'wsl') {
-    const ids = wslTargets.value.map((t) => t.id)
-    selectedTargets.value = Array.from(new Set([...selectedTargets.value, ...ids]))
-  } else if (envTab.value === 'host') {
-    const ids = hostTargets.value.map((t) => t.id)
-    selectedTargets.value = Array.from(new Set([...selectedTargets.value, ...ids]))
-  } else {
-    selectedTargets.value = targets.value.map((t) => t.id)
-  }
-}
-
-function clearAllTargets() {
-  if (envTab.value === 'wsl') {
-    const wslIds = wslTargets.value.map((t) => t.id)
-    selectedTargets.value = selectedTargets.value.filter((id) => !wslIds.includes(id))
-  } else if (envTab.value === 'host') {
-    const hostIds = hostTargets.value.map((t) => t.id)
-    selectedTargets.value = selectedTargets.value.filter((id) => !hostIds.includes(id))
-  } else {
-    selectedTargets.value = []
-    customTargets.value = []
-  }
-}
-
-function isGroupAllSelected(groupKey: 'wsl' | 'host'): boolean {
-  const group = groupKey === 'wsl' ? wslTargets.value : hostTargets.value
-  return group.length > 0 && group.every((t) => selectedTargets.value.includes(t.id))
-}
-
-function groupSelectedCount(groupKey: 'wsl' | 'host'): number {
-  const group = groupKey === 'wsl' ? wslTargets.value : hostTargets.value
-  return group.filter((t) => selectedTargets.value.includes(t.id)).length
-}
-
-function toggleGroup(groupKey: 'wsl' | 'host') {
-  const group = groupKey === 'wsl' ? wslTargets.value : hostTargets.value
-  const allInGroup = group.map((t) => t.id)
-  if (isGroupAllSelected(groupKey)) {
-    selectedTargets.value = selectedTargets.value.filter((id) => !allInGroup.includes(id))
-  } else {
-    selectedTargets.value = Array.from(new Set([...selectedTargets.value, ...allInGroup]))
-  }
-}
+const currentTargets = computed(() => (envTab.value === 'wsl' ? wslTargets.value : hostTargets.value))
+const isCrossEnv = computed(() => currentTargets.value.some((t) => t.isCrossEnv))
 
 const allSkillsSelected = computed(
   () => props.skills.length > 0 && selectedSkills.value.length === props.skills.length,
@@ -175,6 +36,29 @@ const allSkillsSelected = computed(
 
 function toggleAllSkills() {
   selectedSkills.value = allSkillsSelected.value ? [] : props.skills.map((s) => s.dir)
+}
+
+function switchEnvTab(tab: 'wsl' | 'host') {
+  if (envTab.value === tab) return
+  envTab.value = tab
+  customTargets.value = []
+  const list = tab === 'wsl' ? wslTargets.value : hostTargets.value
+  selectedTargets.value = list.filter((t) => t.parentExists || t.exists).map((t) => t.id)
+  mode.value = isCrossEnv.value ? 'copy' : 'symlink'
+}
+
+function selectAllDetected() {
+  const ids = currentTargets.value.filter((t) => t.parentExists || t.exists).map((t) => t.id)
+  selectedTargets.value = Array.from(new Set([...selectedTargets.value, ...ids]))
+}
+
+function selectAllTargets() {
+  selectedTargets.value = currentTargets.value.map((t) => t.id)
+}
+
+function clearAllTargets() {
+  selectedTargets.value = []
+  customTargets.value = []
 }
 
 function addCustomTarget() {
@@ -193,13 +77,15 @@ async function loadTargets() {
   error.value = ''
   try {
     targets.value = await api.listAgentTargets()
-    // 默认仅勾选当前平台（WSL）已检测到的 Agent 目录，保持默认轻量软链接体验
-    const localDetected = targets.value
-      .filter((t) => t.env === 'wsl' && (t.parentExists || t.exists))
-      .map((t) => t.id)
-    selectedTargets.value = localDetected.length
-      ? localDetected
-      : targets.value.filter((t) => t.parentExists || t.exists).map((t) => t.id)
+    // 若存在 WSL 环境则默认定位到 WSL，否则直接定位到「主机」
+    if (wslTargets.value.length > 0) {
+      envTab.value = 'wsl'
+      selectedTargets.value = wslTargets.value.filter((t) => t.parentExists || t.exists).map((t) => t.id)
+    } else {
+      envTab.value = 'host'
+      selectedTargets.value = hostTargets.value.filter((t) => t.parentExists || t.exists).map((t) => t.id)
+    }
+    mode.value = isCrossEnv.value ? 'copy' : 'symlink'
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -209,7 +95,7 @@ async function loadTargets() {
 
 async function submit() {
   if (syncing.value) return
-  const allTargets = effectiveTargets.value
+  const allTargets = [...selectedTargets.value, ...customTargets.value]
   if (!selectedSkills.value.length) {
     error.value = '请至少选择一个 Skill'
     return
@@ -227,7 +113,7 @@ async function submit() {
       skills: selectedSkills.value,
       targets: allTargets,
       overwrite: overwrite.value,
-      mode: mode.value,
+      mode: isCrossEnv.value ? 'copy' : mode.value,
     })
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
@@ -252,6 +138,7 @@ onMounted(loadTargets)
       </div>
 
       <div class="modal-body">
+        <!-- 1. 选择 Skill -->
         <div class="section">
           <div class="section-head">
             <label>选择要下发的 Skill（{{ selectedSkills.length }} / {{ skills.length }}）</label>
@@ -272,26 +159,19 @@ onMounted(loadTargets)
           </div>
         </div>
 
+        <!-- 2. 选择目标 Agent 目录 (WSL vs 主机) -->
         <div class="section">
           <div class="section-head">
             <div class="head-left">
-              <label>选择目标 Agent 目录（已选 {{ currentTabSelectedCount }}）</label>
-              <div v-if="hasHost" class="env-filter-tabs">
-                <button
-                  type="button"
-                  class="env-tab-btn"
-                  :class="{ active: envTab === 'all' }"
-                  @click="switchEnvTab('all')"
-                >
-                  全部 ({{ targets.length }})
-                </button>
+              <label>选择目标 Agent 目录（已选 {{ selectedTargets.length + customTargets.length }} / {{ currentTargets.length }}）</label>
+              <div v-if="hasWSL && hasHost" class="env-filter-tabs">
                 <button
                   type="button"
                   class="env-tab-btn"
                   :class="{ active: envTab === 'wsl' }"
                   @click="switchEnvTab('wsl')"
                 >
-                  🐧 WSL ({{ wslTargets.length }})
+                  🐧 WSL
                 </button>
                 <button
                   type="button"
@@ -299,7 +179,7 @@ onMounted(loadTargets)
                   :class="{ active: envTab === 'host' }"
                   @click="switchEnvTab('host')"
                 >
-                  🪟 Windows 主机 ({{ hostTargets.length }})
+                  💻 主机
                 </button>
               </div>
             </div>
@@ -312,45 +192,26 @@ onMounted(loadTargets)
             </div>
           </div>
 
-          <p v-if="loadingTargets" class="muted">正在检测环境（WSL / Windows 主机）及 Agent 目录…</p>
+          <p v-if="loadingTargets" class="muted">正在检测 Agent 目录…</p>
 
-          <div v-else class="groups-container">
-            <div v-for="grp in displayedGroups" :key="grp.key" class="env-group-card">
-              <div class="group-header">
-                <div class="group-title">
-                  <span class="grp-icon">{{ grp.icon }}</span>
-                  <strong>{{ grp.title }}</strong>
-                  <span class="count-badge">{{ groupSelectedCount(grp.key) }} / {{ grp.items.length }}</span>
-                </div>
-                <button
-                  type="button"
-                  class="link-btn"
-                  :disabled="syncing"
-                  @click="toggleGroup(grp.key)"
-                >
-                  {{ isGroupAllSelected(grp.key) ? '取消全选本组' : '全选本组' }}
-                </button>
-              </div>
-
-              <div class="target-list">
-                <label v-for="t in grp.items" :key="t.id" class="target-row">
-                  <input v-model="selectedTargets" type="checkbox" :value="t.id" :disabled="syncing" />
-                  <span class="target-name">{{ t.label }}</span>
-                  <code class="mono target-path" :title="t.path">{{ t.displayPath }}</code>
-                  <span v-if="t.isCrossEnv" class="badge badge-cross" title="跨环境同步：Windows 原生兼容">跨主机复制</span>
-                  <span class="badge" :class="t.exists ? 'badge-ok' : (t.parentExists ? 'badge-info' : 'badge-dim')">
-                    {{ t.exists ? '已有目录' : (t.parentExists ? '已检测到 Agent' : '未检测到') }}
-                  </span>
-                </label>
-              </div>
-            </div>
+          <div v-else class="target-list">
+            <label v-for="t in currentTargets" :key="t.id" class="target-row">
+              <input v-model="selectedTargets" type="checkbox" :value="t.id" :disabled="syncing" />
+              <span class="target-name">{{ t.label }}</span>
+              <code class="mono target-path" :title="t.path">{{ t.displayPath }}</code>
+              <span v-if="t.isCrossEnv" class="badge badge-cross" title="跨环境同步：Windows 原生兼容">跨主机复制</span>
+              <span class="badge" :class="t.exists ? 'badge-ok' : (t.parentExists ? 'badge-info' : 'badge-dim')">
+                {{ t.exists ? '已有目录' : (t.parentExists ? '已检测到 Agent' : '未检测到') }}
+              </span>
+            </label>
           </div>
 
+          <!-- 自定义目录 -->
           <div class="custom-row">
             <input
               v-model="customInput"
               class="mono"
-              placeholder="自定义目标目录，例如 ~/.my-agent/skills 或 C:/Users/..."
+              :placeholder="envTab === 'wsl' ? '自定义 WSL 目标目录，例如 ~/.my-agent/skills' : '自定义主机目标目录，例如 ~/my-agent/skills 或 C:/...'"
               :disabled="syncing"
               @keydown.enter.prevent="addCustomTarget"
             />
@@ -366,12 +227,13 @@ onMounted(loadTargets)
           </div>
         </div>
 
+        <!-- 3. 同步选项 -->
         <div class="options-row">
           <label class="check"><input v-model="overwrite" type="checkbox" :disabled="syncing" />覆盖目标目录同名 Skill</label>
-          <div v-if="hasCrossEnvSelected" class="mode-group">
+          <div v-if="isCrossEnv" class="mode-group">
             <span class="muted">方式：</span>
             <span class="mode-fixed">复制文件</span>
-            <span class="badge badge-cross" title="目标包含 Windows 主机跨环境目录，不支持符号链接">跨环境仅支持文件复制</span>
+            <span class="badge badge-cross" title="跨环境同步不支持符号链接">跨环境仅支持文件复制</span>
           </div>
           <div v-else class="mode-group">
             <span class="muted">方式：</span>
@@ -382,11 +244,12 @@ onMounted(loadTargets)
 
         <p v-if="error" class="error">{{ error }}</p>
 
+        <!-- 4. 同步结果展示 -->
         <div v-if="results" class="results">
           <div v-for="r in results" :key="r.id" class="result-block">
             <div class="result-head">
               <span class="env-pill" :class="r.env === 'host' ? 'pill-host' : 'pill-wsl'">
-                {{ r.env === 'host' ? '🪟 Windows' : '🐧 WSL' }}
+                {{ r.env === 'host' ? '💻 主机' : '🐧 WSL' }}
               </span>
               <strong>{{ r.label }}</strong>
               <code class="mono muted">{{ r.displayPath }}</code>
@@ -424,7 +287,7 @@ onMounted(loadTargets)
 .head-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .env-filter-tabs { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: rgba(0,0,0,0.15); }
 .env-tab-btn {
-  background: transparent; border: 0; padding: 2px 8px; font-size: 11px;
+  background: transparent; border: 0; padding: 3px 10px; font-size: 12px;
   color: var(--muted); cursor: pointer; transition: all .15s;
 }
 .env-tab-btn:hover { color: var(--fg); background: rgba(255, 255, 255, 0.04); }
@@ -445,25 +308,9 @@ onMounted(loadTargets)
 .check-card:hover { border-color: rgba(88, 166, 255, 0.4); }
 .check-card.active { border-color: var(--accent, #58a6ff); background: rgba(88, 166, 255, 0.1); color: var(--accent, #58a6ff); font-weight: 500; }
 
-.groups-container {
-  display: flex; flex-direction: column; gap: 12px;
-  max-height: 300px; overflow-y: auto; padding-right: 4px;
-}
-.env-group-card {
-  border: 1px solid var(--border); border-radius: 8px; background: rgba(255, 255, 255, 0.015);
-  padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
-}
-.group-header {
-  display: flex; align-items: center; justify-content: space-between;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.08); padding-bottom: 6px;
-}
-.group-title { display: flex; align-items: center; gap: 6px; font-size: 13px; }
-.grp-icon { font-size: 14px; }
-.count-badge { font-size: 11px; color: var(--muted); background: var(--panel-2); padding: 1px 6px; border-radius: 10px; }
-
-.target-list { display: flex; flex-direction: column; gap: 5px; }
+.target-list { display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto; padding-right: 2px; }
 .target-row {
-  display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
   border: 1px solid var(--border); border-radius: 6px; background: rgba(255, 255, 255, 0.02);
   font-size: 13px; cursor: pointer; transition: background .15s, border-color .15s;
 }

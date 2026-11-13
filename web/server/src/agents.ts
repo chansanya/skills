@@ -138,17 +138,18 @@ function buildAllPresets(): AgentTarget[] {
   const isWSL =
     process.platform === 'linux' &&
     (process.env.WSL_DISTRO_NAME !== undefined ||
+      process.env.WSL_INTEROP !== undefined ||
       (fs.existsSync('/proc/version') && fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft')))
 
-  // 1. WSL Environment Presets (if currently in WSL or Linux)
-  if (isWSL || process.platform === 'linux') {
+  if (isWSL) {
+    // 1. WSL 自身环境
     for (const def of AGENT_DEFS) {
       const fullPath = path.join(LOCAL_HOME, def.rel)
       targets.push({
         id: `wsl:${def.key}`,
-        label: `${def.label}`,
+        label: def.label,
         env: 'wsl',
-        envLabel: 'WSL 环境 (Linux)',
+        envLabel: 'WSL',
         path: fullPath,
         displayPath: `~/${def.rel}`,
         parentExists: false,
@@ -156,23 +157,43 @@ function buildAllPresets(): AgentTarget[] {
         isCrossEnv: false,
       })
     }
-  }
 
-  // 2. Windows Host Environment Presets (if detected)
-  if (host) {
+    // 2. 宿主 Windows 主机环境
+    if (host) {
+      for (const def of AGENT_DEFS) {
+        const fullPath = path.join(host.localPath, def.rel)
+        const winDisplay = `${host.winProfile}\\${def.rel.replace(/\//g, '\\')}`
+        targets.push({
+          id: `host:${def.key}`,
+          label: def.label,
+          env: 'host',
+          envLabel: '主机',
+          path: fullPath,
+          displayPath: winDisplay,
+          parentExists: false,
+          exists: false,
+          isCrossEnv: true, // 从 WSL 下发到宿主 Windows，属于跨环境
+        })
+      }
+    }
+  } else {
+    // 非 WSL 环境（如 macOS、原生 Linux、原生 Windows）：当前机器即是「主机」
     for (const def of AGENT_DEFS) {
-      const fullPath = path.join(host.localPath, def.rel)
-      const winDisplay = `${host.winProfile}\\${def.rel.replace(/\//g, '\\')}`
+      const fullPath = path.join(LOCAL_HOME, def.rel)
+      const display =
+        process.platform === 'win32'
+          ? `${LOCAL_HOME}\\${def.rel.replace(/\//g, '\\')}`
+          : `~/${def.rel}`
       targets.push({
         id: `host:${def.key}`,
-        label: `${def.label}`,
+        label: def.label,
         env: 'host',
-        envLabel: 'Windows 主机环境 (Host)',
+        envLabel: '主机',
         path: fullPath,
-        displayPath: winDisplay,
+        displayPath: display,
         parentExists: false,
         exists: false,
-        isCrossEnv: isWSL,
+        isCrossEnv: false, // 原生同主机，不跨环境，支持软链接
       })
     }
   }
@@ -196,9 +217,15 @@ function resolveCustomTarget(raw: string): TargetItem {
   if (!input || input.length > 500 || input.includes('\0')) throw badRequest(`非法的目标路径：${raw}`)
   const host = detectHostInfo()
 
+  const isWSL =
+    process.platform === 'linux' &&
+    (process.env.WSL_DISTRO_NAME !== undefined ||
+      process.env.WSL_INTEROP !== undefined ||
+      (fs.existsSync('/proc/version') && fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft')))
+
   let abs: string
   let display: string
-  let env: 'wsl' | 'host' = 'wsl'
+  let env: 'wsl' | 'host' = isWSL ? 'wsl' : 'host'
   let isCrossEnv = false
 
   // Windows-style path: C:\Users\... or C:/Users/...
