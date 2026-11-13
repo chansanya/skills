@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { CheckCircle2, FolderSync, Info, Loader2, Plus, X, XCircle } from 'lucide-vue-next'
+import { computed, onMounted, ref, watch } from 'vue'
+import { CheckCircle2, FolderSync, Loader2, Plus, X, XCircle } from 'lucide-vue-next'
 import { api, type AgentTarget, type SkillSummary, type SyncMode, type TargetSyncResult } from '../api'
 
 const props = defineProps<{
@@ -27,8 +27,20 @@ const wslTargets = computed(() => targets.value.filter((t) => t.env === 'wsl'))
 const hostTargets = computed(() => targets.value.filter((t) => t.env === 'host'))
 const hasHost = computed(() => hostTargets.value.length > 0)
 
-const hasCrossEnvSelected = computed(() =>
-  targets.value.some((t) => t.isCrossEnv && selectedTargets.value.includes(t.id)),
+const hasCrossEnvSelected = computed(() => {
+  const customCross = customTargets.value.some((c) => /^[a-zA-Z]:[/\\]/.test(c.trim()))
+  const presetCross = targets.value.some((t) => t.isCrossEnv && selectedTargets.value.includes(t.id))
+  return customCross || presetCross
+})
+
+watch(
+  hasCrossEnvSelected,
+  (cross) => {
+    if (cross) {
+      mode.value = 'copy'
+    }
+  },
+  { immediate: true },
 )
 
 const displayedGroups = computed(() => {
@@ -278,16 +290,16 @@ onMounted(loadTargets)
 
         <div class="options-row">
           <label class="check"><input v-model="overwrite" type="checkbox" :disabled="syncing" />覆盖目标目录同名 Skill</label>
-          <div class="mode-group">
+          <div v-if="hasCrossEnvSelected" class="mode-group">
+            <span class="muted">方式：</span>
+            <span class="mode-fixed">复制文件</span>
+            <span class="badge badge-cross" title="目标包含 Windows 主机跨环境目录，不支持符号链接">跨环境仅支持文件复制</span>
+          </div>
+          <div v-else class="mode-group">
             <span class="muted">方式：</span>
             <label class="check"><input v-model="mode" type="radio" value="symlink" :disabled="syncing" />软链接</label>
             <label class="check"><input v-model="mode" type="radio" value="copy" :disabled="syncing" />复制文件</label>
           </div>
-        </div>
-
-        <div v-if="mode === 'symlink' && hasCrossEnvSelected" class="cross-hint">
-          <Info :size="14" class="info-icon" />
-          <span>选中的 Windows 主机目录将自动采用复制文件模式下发，确保 Windows 原生应用正常读取。WSL 目标保持软链接。</span>
         </div>
 
         <p v-if="error" class="error">{{ error }}</p>
@@ -400,12 +412,7 @@ onMounted(loadTargets)
   padding: 8px 0 0; border-top: 1px dashed var(--border);
 }
 .mode-group { display: flex; align-items: center; gap: 12px; font-size: 13px; }
-.cross-hint {
-  display: flex; align-items: center; gap: 8px; font-size: 12px; color: #d29922;
-  background: rgba(210, 153, 34, 0.1); border: 1px solid rgba(210, 153, 34, 0.25);
-  padding: 6px 10px; border-radius: 6px; line-height: 1.4;
-}
-.info-icon { flex-shrink: 0; }
+.mode-fixed { font-weight: 500; font-size: 13px; color: var(--fg); }
 
 .results { display: flex; flex-direction: column; gap: 8px; max-height: 190px; overflow: auto; padding-top: 4px; }
 .result-block { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 12px; }
