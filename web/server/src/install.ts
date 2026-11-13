@@ -52,30 +52,16 @@ function cleanExpiredCache(): void {
 }
 
 function parseSource(raw: string): { repo?: string; skill?: string } {
-  const tokens = raw.trim().split(/\s+/).filter(Boolean)
-  let skill: string | undefined
-  const positional: string[] = []
-
-  const addIdx = tokens.findIndex((t, i) => t === 'add' && tokens[i - 1] === 'skills')
-  const args = addIdx >= 0 ? tokens.slice(addIdx + 1) : tokens
-  for (let i = 0; i < args.length; i++) {
-    const t = args[i]
-    if (t === '--skill' || t === '-s') skill = args[++i]
-    else if (t.startsWith('--skill=')) skill = t.slice('--skill='.length)
-    else if (!t.startsWith('-')) positional.push(t)
-  }
-
-  const source = positional[0]
-  if (!source) return { skill }
+  const source = raw.trim()
+  if (!source) return {}
 
   const url = /^https?:\/\/(?:www\.)?(github\.com|skills\.sh)\/([^/\s]+)\/([^/\s#?]+)(?:\/([^\s#?]+))?/i.exec(source)
   if (url) {
     const [, host, owner, repo, rest] = url
     const repoName = repo.replace(/\.git$/, '')
-    if (host.toLowerCase() === 'skills.sh' && rest && !skill) skill = rest.split('/')[0]
-    return { repo: `${owner}/${repoName}`, skill }
+    return { repo: `${owner}/${repoName}`, skill: host.toLowerCase() === 'skills.sh' && rest ? rest.split('/')[0] : undefined }
   }
-  return { repo: source.replace(/\.git$/, ''), skill }
+  return { repo: source.replace(/\.git$/, '') }
 }
 
 export function parseAndValidateSource(body: unknown): { repo: string; skill: string } {
@@ -87,7 +73,7 @@ export function parseAndValidateSource(body: unknown): { repo: string; skill: st
   const skill = (typeof input.skill === 'string' && input.skill.trim()) || parsed.skill
   const repo = parsed.repo
 
-  if (!repo || !REPO_RE.test(repo)) throw badRequest('无法识别仓库，请输入 owner/repo、GitHub/skills.sh 链接或 npx skills add 命令')
+  if (!repo || !REPO_RE.test(repo)) throw badRequest('无法识别仓库，请输入 owner/repo、GitHub 地址或 skills.sh 链接')
   if (!skill) throw badRequest('请指定要安装的 Skill 名称')
   if (!SKILL_NAME_RE.test(skill) || skill.includes('..')) throw badRequest(`非法的 Skill 名称：${skill}`)
   if (IGNORED_DIRS.has(skill)) throw badRequest(`Skill 名称与保留目录冲突：${skill}`)

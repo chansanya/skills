@@ -28,7 +28,7 @@ npm run dev
 | **GitHub 仓库** | `owner/repo` 或完整 GitHub 地址 | 自动分析全部 `SKILL.md`，多选需要导入的 Skill |
 
 - **预检测机制（安全防错）**：点击「预检测 Skill 信息」后，系统会先从远端探测并解析该技能的名称、简介说明、附属文件列表以及本地冲突状态。
-- **GitHub 仓库分析**：仓库只需填写一次；系统会列出所有符合规范的 Skill，支持多选批量导入，并明确展示缺少 `name` / `description` Frontmatter 的无效项目。
+- **GitHub 仓库分析**：仓库只需填写一次；系统会列出所有 `SKILL.md` 并支持多选批量导入。缺少 `name` / `description` Frontmatter 的项目会标记为“兼容 Skill”，默认只在本地副本中自动补全元数据；也可以选择保持原文件直接导入。只有符号链接、危险路径或超限文件等安全问题才会阻止导入。
 - **卡片式信息确认**：查看技能简介无误后，点击「确认下载入库」瞬间完成落盘；若不想导入也可点击「返回修改」重新输入。
 - **覆盖控制**：若本地已存在同名技能，预检会给出明确的黄色冲突提示，并自动勾选确认覆盖。
 
@@ -86,7 +86,7 @@ npm run dev
 { "source": "vercel-labs/agent-skills", "skill": "web-design-guidelines", "overwrite": false }
 ```
 
-`source` 支持 `owner/repo`、`https://github.com/<owner>/<repo>`、`https://skills.sh/<owner>/<repo>[/<skill>]` 或完整 `npx skills add ...` 命令。服务端在临时目录执行：
+`source` 支持 `owner/repo`、`https://github.com/<owner>/<repo>` 或 `https://skills.sh/<owner>/<repo>[/<skill>]`。服务端在临时目录执行：
 
 ```bash
 npx --yes skills add <owner/repo> --skill <name> --agent claude-code --copy -y

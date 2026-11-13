@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import {
   AlertTriangle,
   Archive,
@@ -20,6 +20,7 @@ import {
 import {
   api,
   type InspectResult,
+  type RecommendedSkill,
   type RepositoryAnalysisResult,
   type RepositoryInstallResult,
   type SkillSearchResult,
@@ -33,13 +34,14 @@ const emit = defineEmits<{ close: []; installed: [name: string] }>()
 const tab = ref<Tab>('remote')
 const remoteSource = ref<RemoteSource>('skills')
 const source = ref('')
-const skill = ref('')
 const searchQuery = ref('')
 const searchResults = ref<SkillSearchResult[]>([])
 const selectedSearchResult = ref<SkillSearchResult | null>(null)
 const searchCompleted = ref(false)
+const recommendedSkills = ref<RecommendedSkill[]>([])
 const repositoryAnalysis = ref<RepositoryAnalysisResult | null>(null)
 const selectedRepositorySkills = ref<string[]>([])
+const repositoryMetadataMode = ref<'normalize' | 'preserve'>('normalize')
 const repositoryOverwrite = ref(false)
 const repositoryInstallResults = ref<RepositoryInstallResult[]>([])
 const folderFiles = ref<File[]>([])
@@ -57,24 +59,39 @@ const success = ref('')
 
 const busy = computed(() => running.value || inspecting.value || searching.value || analyzingRepository.value)
 const canSearch = computed(() => !busy.value && !!searchQuery.value.trim())
-const repositoryValidSkills = computed(() => repositoryAnalysis.value?.skills.filter((item) => item.valid) ?? [])
-const repositoryInvalidSkills = computed(() => repositoryAnalysis.value?.skills.filter((item) => !item.valid) ?? [])
+const repositoryImportableSkills = computed(() =>
+  repositoryAnalysis.value?.skills.filter((item) => item.status !== 'invalid') ?? [],
+)
+const repositoryCompatibleSkills = computed(() =>
+  repositoryAnalysis.value?.skills.filter((item) => item.status === 'compatible') ?? [],
+)
+const repositoryInvalidSkills = computed(() =>
+  repositoryAnalysis.value?.skills.filter((item) => item.status === 'invalid') ?? [],
+)
 const selectedRepositoryCandidates = computed(() =>
-  repositoryValidSkills.value.filter((item) => selectedRepositorySkills.value.includes(item.id)),
+  repositoryImportableSkills.value.filter((item) => selectedRepositorySkills.value.includes(item.id)),
 )
 const selectedRepositoryConflicts = computed(() =>
-  selectedRepositoryCandidates.value.filter((item) => item.existsLocally),
+  selectedRepositoryCandidates.value.filter((item) =>
+    repositoryMetadataMode.value === 'preserve' ? item.preserveExistsLocally : item.existsLocally,
+  ),
 )
+const selectedCompatibleSkills = computed(() =>
+  selectedRepositoryCandidates.value.filter((item) => item.status === 'compatible'),
+)
+const canPreserveSelected = computed(() => selectedRepositoryCandidates.value.every((item) => item.canPreserve))
 const canAnalyzeRepository = computed(() => !busy.value && !!source.value.trim())
 const canInstallRepository = computed(() =>
   !busy.value &&
   !!repositoryAnalysis.value &&
   selectedRepositorySkills.value.length > 0 &&
+  (repositoryMetadataMode.value !== 'preserve' || canPreserveSelected.value) &&
   (!selectedRepositoryConflicts.value.length || repositoryOverwrite.value),
 )
 const canInspect = computed(() => {
   if (busy.value) return false
-  return remoteSource.value === 'skills' && !!selectedSearchResult.value
+  if (remoteSource.value === 'skills') return !!selectedSearchResult.value
+  return false
 })
 const canSubmit = computed(() => {
   if (busy.value) return false
@@ -102,13 +119,13 @@ function resetSearchResults() {
   selectedSearchResult.value = null
   searchCompleted.value = false
   source.value = ''
-  skill.value = ''
   resetInspect()
 }
 
 function resetRepositoryAnalysis() {
   repositoryAnalysis.value = null
   selectedRepositorySkills.value = []
+  repositoryMetadataMode.value = 'normalize'
   repositoryOverwrite.value = false
   repositoryInstallResults.value = []
   resetInspect()
@@ -124,13 +141,13 @@ function switchRemoteSource(next: RemoteSource) {
   if (busy.value || remoteSource.value === next) return
   remoteSource.value = next
   source.value = ''
-  skill.value = ''
   searchQuery.value = ''
   searchResults.value = []
   selectedSearchResult.value = null
   searchCompleted.value = false
   repositoryAnalysis.value = null
   selectedRepositorySkills.value = []
+  repositoryMetadataMode.value = 'normalize'
   repositoryOverwrite.value = false
   repositoryInstallResults.value = []
   resetInspect()
@@ -139,7 +156,6 @@ function switchRemoteSource(next: RemoteSource) {
 function selectSearchResult(result: SkillSearchResult) {
   selectedSearchResult.value = result
   source.value = result.source
-  skill.value = result.name
   resetInspect()
 }
 
@@ -151,14 +167,23 @@ function toggleRepositorySkill(id: string) {
   selectedRepositorySkills.value = selectedRepositorySkills.value.includes(id)
     ? selectedRepositorySkills.value.filter((item) => item !== id)
     : [...selectedRepositorySkills.value, id]
+  if (repositoryMetadataMode.value === 'preserve' && !canPreserveSelected.value) repositoryMetadataMode.value = 'normalize'
   if (!selectedRepositoryConflicts.value.length) repositoryOverwrite.value = false
   clearMessages()
 }
 
 function toggleAllRepositorySkills() {
-  const validIds = repositoryValidSkills.value.map((item) => item.id)
-  selectedRepositorySkills.value = selectedRepositorySkills.value.length === validIds.length ? [] : validIds
+  const importableIds = repositoryImportableSkills.value.map((item) => item.id)
+  selectedRepositorySkills.value = selectedRepositorySkills.value.length === importableIds.length ? [] : importableIds
+  if (repositoryMetadataMode.value === 'preserve' && !canPreserveSelected.value) repositoryMetadataMode.value = 'normalize'
   if (!selectedRepositoryConflicts.value.length) repositoryOverwrite.value = false
+  clearMessages()
+}
+
+function setRepositoryMetadataMode(mode: 'normalize' | 'preserve') {
+  if (mode === 'preserve' && !canPreserveSelected.value) return
+  repositoryMetadataMode.value = mode
+  repositoryOverwrite.value = false
   clearMessages()
 }
 
@@ -172,6 +197,21 @@ function onArchivePick(e: Event) {
   const input = e.target as HTMLInputElement
   archiveFile.value = input.files?.[0] ?? null
   clearMessages()
+}
+
+onMounted(async () => {
+  try {
+    recommendedSkills.value = await api.getRecommendedSkills()
+  } catch {
+    recommendedSkills.value = []
+  }
+})
+
+async function selectRecommended(rec: RecommendedSkill) {
+  if (busy.value) return
+  searchQuery.value = rec.query || rec.name
+  resetSearchResults()
+  await handleSearch()
 }
 
 async function handleSearch() {
@@ -217,6 +257,7 @@ async function handleRepositoryInstall() {
       inspectId: repositoryAnalysis.value.inspectId,
       skills: selectedRepositorySkills.value,
       overwrite: repositoryOverwrite.value,
+      metadataMode: repositoryMetadataMode.value,
     })
     repositoryInstallResults.value = results
     const completed = results.filter((item) => item.status !== 'error')
@@ -228,6 +269,7 @@ async function handleRepositoryInstall() {
     if (failed.length) error.value = failed.map((item) => `${item.name}：${item.message ?? '导入失败'}`).join('；')
     repositoryAnalysis.value = null
     selectedRepositorySkills.value = []
+    repositoryMetadataMode.value = 'normalize'
     repositoryOverwrite.value = false
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
@@ -241,9 +283,9 @@ async function handleInspect() {
   inspecting.value = true
   clearMessages()
   try {
-    const payload = remoteSource.value === 'skills' && selectedSearchResult.value
+    const payload = selectedSearchResult.value
       ? { source: selectedSearchResult.value.source, skill: selectedSearchResult.value.name }
-      : { source: source.value.trim(), skill: skill.value.trim() || undefined }
+      : { source: source.value.trim() }
     const res = await api.inspectSkill(payload)
     inspected.value = res
     overwrite.value = res.existsLocally
@@ -348,14 +390,48 @@ function close() {
             <template v-if="remoteSource === 'skills'">
               <div class="field">
                 <label>Skill 名称或关键词 <span class="required">*</span></label>
-                <input
-                  v-model="searchQuery"
-                  placeholder="例如：find-skills"
-                  :disabled="busy"
-                  autofocus
-                  @input="resetSearchResults"
-                />
-                <span class="hint muted">搜索 Skills 目录，选择匹配项后再预检导入内容。</span>
+                <div class="search-input-wrap">
+                  <input
+                    v-model="searchQuery"
+                    placeholder="例如：find-skills 或点击下方推荐技能"
+                    :disabled="busy"
+                    autofocus
+                    @input="resetSearchResults"
+                    @keydown.enter.prevent="handleSearch"
+                  />
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-search-inline"
+                    :disabled="!canSearch"
+                    @click="handleSearch"
+                  >
+                    <Loader2 v-if="searching" :size="13" class="spin" />
+                    <Search v-else :size="13" />
+                    搜索
+                  </button>
+                </div>
+                <span class="hint muted">在 skills.sh 目录中检索，选择匹配项后预检导入。</span>
+              </div>
+
+              <div v-if="recommendedSkills.length" class="recommended-panel">
+                <div class="recommended-header">
+                  <span class="recommended-title">推荐技能 (点击直搜)：</span>
+                  <span class="recommended-hint">根目录 recommended-skills.json 可编辑</span>
+                </div>
+                <div class="recommended-chips">
+                  <button
+                    v-for="rec in recommendedSkills"
+                    :key="rec.name"
+                    type="button"
+                    class="recommended-chip"
+                    :class="{ active: searchQuery === (rec.query || rec.name) }"
+                    :disabled="busy"
+                    :title="rec.description ? `${rec.name} — ${rec.description}` : rec.name"
+                    @click="selectRecommended(rec)"
+                  >
+                    {{ rec.name }}
+                  </button>
+                </div>
               </div>
 
               <div v-if="searchCompleted" class="search-panel">
@@ -407,18 +483,19 @@ function close() {
                   <div>
                     <strong class="mono">{{ repositoryAnalysis.repo }}</strong>
                     <span class="muted">
-                      {{ repositoryValidSkills.length }} 个可导入
-                      <template v-if="repositoryInvalidSkills.length">，{{ repositoryInvalidSkills.length }} 个不符合规范</template>
+                      {{ repositoryImportableSkills.length }} 个可导入
+                      <template v-if="repositoryCompatibleSkills.length">，其中 {{ repositoryCompatibleSkills.length }} 个需补全元数据</template>
+                      <template v-if="repositoryInvalidSkills.length">，{{ repositoryInvalidSkills.length }} 个不可导入</template>
                     </span>
                   </div>
-                  <button type="button" class="btn btn-sm" :disabled="busy || !repositoryValidSkills.length" @click="toggleAllRepositorySkills">
-                    {{ selectedRepositorySkills.length === repositoryValidSkills.length ? '取消全选' : '全选可导入' }}
+                  <button type="button" class="btn btn-sm" :disabled="busy || !repositoryImportableSkills.length" @click="toggleAllRepositorySkills">
+                    {{ selectedRepositorySkills.length === repositoryImportableSkills.length ? '取消全选' : '全选可导入' }}
                   </button>
                 </div>
 
-                <div v-if="repositoryValidSkills.length" class="repository-list" aria-label="可导入的 Skill">
+                <div v-if="repositoryImportableSkills.length" class="repository-list" aria-label="可导入的 Skill">
                   <label
-                    v-for="item in repositoryValidSkills"
+                    v-for="item in repositoryImportableSkills"
                     :key="item.id"
                     class="repository-item"
                     :class="{ selected: selectedRepositorySkills.includes(item.id) }"
@@ -431,26 +508,63 @@ function close() {
                     />
                     <span class="repository-item-main">
                       <span class="repository-item-title">
-                        <strong class="mono">{{ item.name }}</strong>
-                        <span v-if="item.existsLocally" class="conflict-tag">本地已存在</span>
+                        <strong class="mono">{{ item.originalName }}</strong>
+                        <span v-if="item.status === 'compatible'" class="compatibility-tag">需补全元数据</span>
+                        <span
+                          v-if="repositoryMetadataMode === 'preserve' ? item.preserveExistsLocally : item.existsLocally"
+                          class="conflict-tag"
+                        >本地已存在</span>
                       </span>
                       <span class="mono muted repository-path">{{ item.path }}/SKILL.md</span>
                       <span class="repository-description">{{ item.description }}</span>
+                      <span v-if="item.status === 'compatible'" class="repository-issues">
+                        {{ item.issues.join('；') }}
+                        <template v-if="repositoryMetadataMode === 'normalize' && item.name !== item.originalName">；导入名称：{{ item.name }}</template>
+                      </span>
                     </span>
                     <span class="repository-file-count">{{ item.files.length }} 个文件</span>
                   </label>
                 </div>
 
                 <div v-if="repositoryInvalidSkills.length" class="invalid-skills">
-                  <div class="invalid-heading">以下 Skill 暂不可导入</div>
+                  <div class="invalid-heading">以下 Skill 存在安全或结构问题，暂不可导入</div>
                   <div v-for="item in repositoryInvalidSkills" :key="item.id" class="invalid-skill">
                     <div>
                       <strong class="mono">{{ item.name }}</strong>
                       <span class="mono muted">{{ item.path }}/SKILL.md</span>
                     </div>
-                    <span>{{ item.errors.join('；') }}</span>
+                    <span>{{ item.issues.join('；') }}</span>
                   </div>
                 </div>
+              </div>
+
+              <div v-if="selectedCompatibleSkills.length" class="metadata-modes">
+                <button
+                  type="button"
+                  class="metadata-mode"
+                  :class="{ active: repositoryMetadataMode === 'normalize' }"
+                  :disabled="busy"
+                  @click="setRepositoryMetadataMode('normalize')"
+                >
+                  <CheckCircle2 :size="16" />
+                  <span>
+                    <strong>自动补全元数据（推荐）</strong>
+                    <small>只修改本地副本，自动补充 name 和 description，兼容更多 Agent。</small>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  class="metadata-mode"
+                  :class="{ active: repositoryMetadataMode === 'preserve' }"
+                  :disabled="busy || !canPreserveSelected"
+                  @click="setRepositoryMetadataMode('preserve')"
+                >
+                  <FileCode :size="16" />
+                  <span>
+                    <strong>保持原文件直接导入</strong>
+                    <small>{{ canPreserveSelected ? '不改写 SKILL.md，可能无法被部分 Agent 自动发现。' : '部分目录名不安全，无法原样导入。' }}</small>
+                  </span>
+                </button>
               </div>
 
               <label v-if="selectedRepositoryConflicts.length" class="check conflict-confirm">
@@ -659,12 +773,102 @@ function close() {
 .help-desc { margin: 0; }
 .source-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--panel-2);
+}
+.search-input-wrap {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.search-input-wrap input {
+  flex: 1;
+}
+.btn-search-inline {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 500;
+  font-size: 13px;
+  border: none;
+  cursor: pointer;
+}
+.btn-search-inline:hover:not(:disabled) {
+  opacity: 0.9;
+}
+.btn-search-inline:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.recommended-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.recommended-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+.recommended-title {
+  font-weight: 600;
+  color: var(--text);
+}
+.recommended-hint {
+  font-size: 11px;
+  color: var(--muted);
+}
+.recommended-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 120px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.recommended-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.recommended-chip:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(79, 140, 255, 0.08);
+}
+.recommended-chip.active {
+  background: rgba(79, 140, 255, 0.2);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.recommended-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .source-tab {
   display: inline-flex;
@@ -770,7 +974,16 @@ function close() {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.repository-issues { color: var(--warn); font-size: 11px; line-height: 1.4; }
 .repository-file-count { color: var(--muted); white-space: nowrap; }
+.compatibility-tag {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(240, 180, 41, 0.13);
+  color: var(--warn);
+  font-size: 10px;
+}
 .conflict-tag {
   flex-shrink: 0;
   padding: 1px 5px;
@@ -785,6 +998,26 @@ function close() {
 .invalid-skill > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .invalid-skill > div span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .invalid-skill > span { max-width: 55%; color: var(--muted); text-align: right; }
+.metadata-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.metadata-mode {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel-2);
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+}
+.metadata-mode > svg { flex-shrink: 0; margin-top: 2px; }
+.metadata-mode > span { display: flex; flex-direction: column; gap: 3px; }
+.metadata-mode strong { color: var(--text); font-size: 12px; }
+.metadata-mode small { font-size: 11px; line-height: 1.45; }
+.metadata-mode:hover:not(:disabled) { border-color: #3a4250; }
+.metadata-mode.active { border-color: var(--accent); background: rgba(79, 140, 255, 0.11); color: var(--accent); }
+.metadata-mode:disabled { opacity: .5; cursor: not-allowed; }
 .conflict-confirm {
   padding: 9px 11px;
   border: 1px solid rgba(240, 180, 41, 0.35);
@@ -906,5 +1139,6 @@ function close() {
   .repository-file-count { grid-column: 2; }
   .invalid-skill { flex-direction: column; gap: 3px; }
   .invalid-skill > span { max-width: none; text-align: left; }
+  .metadata-modes { grid-template-columns: 1fr; }
 }
 </style>

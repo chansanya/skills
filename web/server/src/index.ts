@@ -1,9 +1,13 @@
+import fs from 'node:fs/promises'
+import path from 'node:path'
 import express, { type NextFunction, type Request, type Response } from 'express'
 import { listTargets, syncToAgents, validateAgentSync } from './agents.js'
 import { HOST, PORT, REPO_ROOT } from './config.js'
 import { HttpError } from './errors.js'
 import { importArchive, importFolder, uploadMiddleware } from './import.js'
 import { inspectSkill, installInspected, installSkill, validateInstall } from './install.js'
+import { analyzeRepository, installRepositorySkills } from './repository.js'
+import { searchSkills } from './search.js'
 import { getSkill, getSkillFile, listSkills } from './skills.js'
 
 const ALLOWED_HOSTS = new Set(['127.0.0.1', 'localhost'])
@@ -33,6 +37,29 @@ app.use(express.json({ limit: '32kb' }))
 
 app.get('/api/skills', async (_req, res) => {
   res.json({ skills: await listSkills() })
+})
+
+app.get('/api/skills/search', async (req, res) => {
+  const query = typeof req.query.q === 'string' ? req.query.q : ''
+  res.json({ skills: await searchSkills(query) })
+})
+
+app.get('/api/skills/recommended', async (_req, res) => {
+  const filePath = path.join(REPO_ROOT, 'recommended-skills.json')
+  try {
+    const raw = await fs.readFile(filePath, 'utf8')
+    res.json({ skills: JSON.parse(raw) })
+  } catch {
+    res.json({ skills: [] })
+  }
+})
+
+app.post('/api/skills/repository/inspect', async (req, res) => {
+  res.json(await analyzeRepository(req.body))
+})
+
+app.post('/api/skills/repository/install', async (req, res) => {
+  res.json(await installRepositorySkills(req.body))
 })
 
 app.get('/api/skills/:name/file', async (req, res) => {

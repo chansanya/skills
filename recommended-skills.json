@@ -1,0 +1,152 @@
+[
+  {
+    "name": "agent-browser",
+    "query": "agent-browser",
+    "source": "vercel-labs/agent-browser",
+    "description": "浏览器自动化操作与评测"
+  },
+  {
+    "name": "agents-sdk",
+    "query": "agents-sdk",
+    "source": "cloudflare",
+    "description": "基于 Cloudflare Workers 的 AI Agent SDK"
+  },
+  {
+    "name": "amap-jsapi-skill",
+    "query": "amap-jsapi-skill",
+    "source": "local",
+    "description": "高德地图 JS API 技能封装"
+  },
+  {
+    "name": "android-llm-agent",
+    "query": "android-llm-agent",
+    "source": "local",
+    "description": "Android 端侧大模型与 Agent 开发"
+  },
+  {
+    "name": "cloudflare",
+    "query": "cloudflare",
+    "source": "cloudflare",
+    "description": "Cloudflare 全平台技能 (Workers, Pages, KV, D1, R2, AI)"
+  },
+  {
+    "name": "cloudflare-email-service",
+    "query": "cloudflare-email-service",
+    "source": "cloudflare",
+    "description": "Cloudflare Email 邮件收发与路由"
+  },
+  {
+    "name": "code-review",
+    "query": "code-review",
+    "source": "mattpocock/skills",
+    "description": "代码自动化审查与改进建议"
+  },
+  {
+    "name": "codebase-design",
+    "query": "codebase-design",
+    "source": "mattpocock/skills",
+    "description": "代码库架构与设计规范"
+  },
+  {
+    "name": "design-mobile-apps",
+    "query": "design-mobile-apps",
+    "source": "designed-by-ai/skills",
+    "description": "移动应用 UI/UX 设计模式"
+  },
+  {
+    "name": "diagnosing-bugs",
+    "query": "diagnosing-bugs",
+    "source": "mattpocock/skills",
+    "description": "结构化 Bug 诊断与根本原因定位"
+  },
+  {
+    "name": "domain-modeling",
+    "query": "domain-modeling",
+    "source": "mattpocock/skills",
+    "description": "领域驱动设计与领域建模"
+  },
+  {
+    "name": "durable-objects",
+    "query": "durable-objects",
+    "source": "cloudflare",
+    "description": "Cloudflare Durable Objects 有状态协调服务"
+  },
+  {
+    "name": "find-skills",
+    "query": "find-skills",
+    "source": "vercel-labs/skills",
+    "description": "搜索与发现官方 Agent Skills 生态技能"
+  },
+  {
+    "name": "frontend-design",
+    "query": "frontend-design",
+    "source": "anthropics/skills",
+    "description": "Anthropic 前端设计最佳实践"
+  },
+  {
+    "name": "grill-me",
+    "query": "grill-me",
+    "source": "mattpocock/skills",
+    "description": "技术方案与设计深度推敲质询"
+  },
+  {
+    "name": "improve-codebase-architecture",
+    "query": "improve-codebase-architecture",
+    "source": "mattpocock/skills",
+    "description": "重构并提升代码库架构质量"
+  },
+  {
+    "name": "personal-map",
+    "query": "personal-map",
+    "source": "local",
+    "description": "高德地图个人专属地图生成工具"
+  },
+  {
+    "name": "prototype",
+    "query": "prototype",
+    "source": "mattpocock/skills",
+    "description": "快速原型设计与敏捷构建"
+  },
+  {
+    "name": "release-todo",
+    "query": "release-todo",
+    "source": "local",
+    "description": "项目版本待发布事项自动生成与更新"
+  },
+  {
+    "name": "sandbox-sdk",
+    "query": "sandbox-sdk",
+    "source": "local",
+    "description": "安全代码沙箱执行 SDK"
+  },
+  {
+    "name": "tdd",
+    "query": "tdd",
+    "source": "mattpocock/skills",
+    "description": "测试驱动开发（TDD）标准流程"
+  },
+  {
+    "name": "turnstile-spin",
+    "query": "turnstile-spin",
+    "source": "cloudflare",
+    "description": "Cloudflare Turnstile 人机验证端到端集成"
+  },
+  {
+    "name": "web-perf",
+    "query": "web-perf",
+    "source": "local",
+    "description": "Chrome DevTools MCP 网页性能与 Core Web Vitals 分析"
+  },
+  {
+    "name": "workers-best-practices",
+    "query": "workers-best-practices",
+    "source": "cloudflare",
+    "description": "Cloudflare Workers 生产环境最佳实践规范"
+  },
+  {
+    "name": "wrangler",
+    "query": "wrangler",
+    "source": "cloudflare",
+    "description": "Cloudflare Workers CLI 开发部署与运维"
+  }
+]

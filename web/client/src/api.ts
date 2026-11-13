@@ -13,6 +13,46 @@ export interface SkillSummary {
   files: string[]
 }
 
+export interface RecommendedSkill {
+  name: string
+  query?: string
+  source?: string
+  description?: string
+}
+
+export interface SkillSearchResult {
+  name: string
+  slug: string
+  source: string
+  installs: number
+}
+
+export interface RepositorySkillCandidate {
+  id: string
+  name: string
+  originalName: string
+  path: string
+  description: string
+  files: string[]
+  existsLocally: boolean
+  preserveExistsLocally: boolean
+  status: 'standard' | 'compatible' | 'invalid'
+  issues: string[]
+  canPreserve: boolean
+}
+
+export interface RepositoryAnalysisResult {
+  inspectId: string
+  repo: string
+  skills: RepositorySkillCandidate[]
+}
+
+export interface RepositoryInstallResult {
+  name: string
+  status: 'installed' | 'replaced' | 'error'
+  message?: string
+}
+
 export interface SkillDetail extends SkillSummary {
   content: string
   body: string
@@ -101,6 +141,25 @@ export const api = {
   getSkill: (name: string) => request<SkillDetail>(`/api/skills/${encodeURIComponent(name)}`),
   getSkillFile: (name: string, filePath: string) =>
     request<SkillFileContent>(`/api/skills/${encodeURIComponent(name)}/file?path=${encodeURIComponent(filePath)}`),
+  getRecommendedSkills: () =>
+    request<{ skills: RecommendedSkill[] }>('/api/skills/recommended').then((r) => r.skills),
+  searchSkills: (query: string) =>
+    request<{ skills: SkillSearchResult[] }>(`/api/skills/search?q=${encodeURIComponent(query)}`).then((r) => r.skills),
+  analyzeRepository: (source: string) =>
+    request<RepositoryAnalysisResult>('/api/skills/repository/inspect', {
+      method: 'POST',
+      body: JSON.stringify({ source }),
+    }),
+  installRepositorySkills: (payload: {
+    inspectId: string
+    skills: string[]
+    overwrite: boolean
+    metadataMode: 'normalize' | 'preserve'
+  }) =>
+    request<{ results: RepositoryInstallResult[] }>('/api/skills/repository/install', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }).then((r) => r.results),
 
   listAgentTargets: () => request<{ targets: AgentTarget[] }>('/api/agents/targets').then((r) => r.targets),
   syncToAgents: (payload: { skills: string[]; targets: string[]; overwrite: boolean; mode: SyncMode }) =>
