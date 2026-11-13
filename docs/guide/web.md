@@ -18,18 +18,17 @@ npm run dev
 
 点击页面右上角的 **「导入 Skill」** 按钮，会打开导入弹窗，支持以下 3 种方式：
 
-### 方式 1：在线导入（skills.sh / GitHub）
+### 方式 1：在线导入
 
-最常用方式。无论你在 GitHub 上看到某个开源仓库，还是在 [skills.sh](https://skills.sh) 上找到技能，都可以直接下载落盘：
+在线导入先选择来源，再填写对应内容：
 
-| 你的输入内容 | 来源（Source）输入框 | Skill 名称输入框 |
+| 来源 | 填写内容 | 操作方式 |
 | :--- | :--- | :--- |
-| **网页链接** | `https://skills.sh/vercel-labs/agent-skills/web-design-guidelines` | *(留空即可)* |
-| **命令行指令** | `npx skills add vercel-labs/agent-skills --skill web-design-guidelines` | *(留空即可)* |
-| **仓库名** | `vercel-labs/agent-skills` | `web-design-guidelines` |
+| **Skills 搜索** | Skill 名称或关键词，如 `find-skills` | 搜索后从匹配结果中选择一个 Skill |
+| **GitHub 仓库** | `owner/repo` 或完整 GitHub 地址 | 自动分析全部 `SKILL.md`，多选需要导入的 Skill |
 
-- **一键快捷试用**：弹窗内提供了示例按钮，点击「示例 1」、「示例 2」可自动填入示范参数测试。
 - **预检测机制（安全防错）**：点击「预检测 Skill 信息」后，系统会先从远端探测并解析该技能的名称、简介说明、附属文件列表以及本地冲突状态。
+- **GitHub 仓库分析**：仓库只需填写一次；系统会列出所有符合规范的 Skill，支持多选批量导入，并明确展示缺少 `name` / `description` Frontmatter 的无效项目。
 - **卡片式信息确认**：查看技能简介无误后，点击「确认下载入库」瞬间完成落盘；若不想导入也可点击「返回修改」重新输入。
 - **覆盖控制**：若本地已存在同名技能，预检会给出明确的黄色冲突提示，并自动勾选确认覆盖。
 
@@ -57,7 +56,7 @@ npm run dev
 - **Skill 列表与检索**：按名称、目录或描述关键字过滤本地 Skill。
 - **全文件在线查看**：右侧文件树展示 `SKILL.md` 与 `resources/`、`scripts/`、`references/` 等所有文件，点击任意文件即可在线查看；`.md` 文件支持**预览 / 源码**切换，脚本与配置文件以等宽代码块展示，二进制或超过 `512 KB` 的文件会给出明确提示。
 - **多方式导入 Skill**：
-  - **skills.sh / GitHub**：输入 `owner/repo`、GitHub / `skills.sh` 链接或 `npx skills add ...` 命令，通过 SSE 实时查看安装日志；
+  - **在线导入**：支持按名称搜索 Skills 市场，或输入 GitHub 仓库地址分析并批量勾选导入；
   - **本地文件夹**：直接选择本地文件夹上传导入（支持自定义目录名与覆盖）；
   - **压缩包**：上传 `.zip`、`.tar.gz` 或 `.tgz` 压缩包（最大 `20 MB`），自动校验 `SKILL.md` Frontmatter 并原子落盘。
 - **同步到 Agent 总目录（WSL / 主机环境区分）**：支持多选 Skill，一键下发到本地 Agent 全局目录：
@@ -70,6 +69,9 @@ npm run dev
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/skills` | 列出所有 Skill（`name`、`dir`、`description`、资源文件） |
+| `GET` | `/api/skills/search?q=...` | 按名称或关键词搜索 Skills 目录 |
+| `POST` | `/api/skills/repository/inspect` | 克隆并分析 GitHub 仓库中的全部 Skill |
+| `POST` | `/api/skills/repository/install` | 批量导入仓库分析结果中的选定 Skill |
 | `GET` | `/api/skills/:name` | 返回 `SKILL.md` 完整内容与文件树 |
 | `GET` | `/api/skills/:name/file?path=...` | 读取 Skill 目录内指定文件的文本内容 |
 | `POST` | `/api/skills/install` | 通过 `npx skills` 安装 Skill（SSE 实时日志流） |
