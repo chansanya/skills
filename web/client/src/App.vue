@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { Boxes, Download, FolderSync, Loader2, RefreshCw, Search } from 'lucide-vue-next'
+import { AlertTriangle, Boxes, Download, FolderSync, Loader2, RefreshCw, Search } from 'lucide-vue-next'
 import { api, type SkillDetail as Detail, type SkillSummary } from './api'
 import SkillDetail from './components/SkillDetail.vue'
 import ImportModal from './components/ImportModal.vue'
@@ -107,6 +107,18 @@ onMounted(load)
 
       <main class="content">
         <div v-if="detailLoading" class="placeholder muted"><Loader2 :size="18" class="spin" />加载中…</div>
+        <div v-else-if="error && !skills.length" class="placeholder">
+          <div class="empty-server-box">
+            <AlertTriangle :size="36" class="warn" />
+            <h3>无法连接本地后端服务</h3>
+            <p class="muted">客户端正在尝试连接 <code>http://127.0.0.1:3001</code>。请确保本地 API 服务已在终端启动：</p>
+            <pre class="code-box">npm run dev  # 或 npm start</pre>
+            <button class="btn btn-primary" :disabled="loading" @click="load">
+              <RefreshCw :size="14" :class="{ spin: loading }" />
+              重试连接
+            </button>
+          </div>
+        </div>
         <SkillDetail v-else-if="detail" ref="skillDetailRef" :skill="detail" @saved="onFileSaved" />
         <div v-else class="placeholder muted">选择左侧的 Skill 查看详情</div>
       </main>
@@ -135,6 +147,29 @@ onMounted(load)
 .pad { padding: 0 16px; }
 .content { overflow: auto; padding: 20px 24px; }
 .placeholder { height: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.empty-server-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  max-width: 480px;
+  padding: 32px 24px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.empty-server-box h3 { margin: 0; font-size: 16px; }
+.empty-server-box p { margin: 0; font-size: 13px; line-height: 1.5; }
+.code-box {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  margin: 0;
+  color: var(--accent);
+}
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 760px) {

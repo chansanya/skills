@@ -134,9 +134,21 @@ export interface InstallHandlers {
   onError: (message: string) => void
 }
 
+const getApiBase = (): string => {
+  if (typeof window === 'undefined') return ''
+  const { hostname, port, protocol } = window.location
+  if (protocol === 'tauri:' || hostname === 'tauri.localhost' || (port && port !== '5173' && port !== '3001')) {
+    return 'http://127.0.0.1:3001'
+  }
+  return ''
+}
+
+const API_BASE = getApiBase()
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  const fullUrl = url.startsWith('/') ? `${API_BASE}${url}` : url
   const isFormData = typeof FormData !== 'undefined' && init?.body instanceof FormData
-  const res = await fetch(url, {
+  const res = await fetch(fullUrl, {
     ...init,
     headers: isFormData ? init?.headers : { 'Content-Type': 'application/json', ...init?.headers },
   })
@@ -220,7 +232,7 @@ export const api = {
   },
 
   async install(payload: InstallPayload, handlers: InstallHandlers): Promise<void> {
-    const res = await fetch('/api/skills/install', {
+    const res = await fetch(`${API_BASE}/api/skills/install`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

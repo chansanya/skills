@@ -1,6 +1,6 @@
 [package]
 name = "skills-manager"
-version = "0.1.0"
+version = "0.1.1"
 description = "Skills Manager Desktop Client"
 authors = ["chansanya"]
 edition = "2021"

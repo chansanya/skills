@@ -11,7 +11,7 @@ import { searchSkills } from './search.js'
 import { addFavorite, listFavorites, removeFavorite } from './favorites.js'
 import { getSkill, getSkillFile, listSkills, saveSkillFile } from './skills.js'
 
-const ALLOWED_HOSTS = new Set(['127.0.0.1', 'localhost'])
+const ALLOWED_HOSTS = new Set(['127.0.0.1', 'localhost', 'tauri.localhost'])
 
 const hostname = (value: string): string | null => {
   try {
@@ -25,8 +25,20 @@ const app = express()
 app.disable('x-powered-by')
 
 app.use((req, res, next) => {
-  const host = hostname(req.headers.host ?? '')
   const origin = req.headers.origin
+  if (origin) {
+    const originHost = hostname(origin)
+    if (originHost && ALLOWED_HOSTS.has(originHost)) {
+      res.setHeader('Access-Control-Allow-Origin', origin)
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    }
+  }
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(204)
+    return
+  }
+  const host = hostname(req.headers.host ?? '')
   if (!host || !ALLOWED_HOSTS.has(host) || (origin && !ALLOWED_HOSTS.has(hostname(origin) ?? ''))) {
     res.status(403).json({ error: '仅允许本机访问' })
     return
