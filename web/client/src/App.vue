@@ -17,6 +17,9 @@ const showImport = ref(false)
 const showSyncAgents = ref(false)
 const skillDetailRef = ref<InstanceType<typeof SkillDetail> | null>(null)
 
+const isStarting = ref(true)
+const startMessage = ref('正在连接本地服务…')
+
 const filtered = computed(() => {
   const q = query.value.trim().toLowerCase()
   if (!q) return skills.value
@@ -26,15 +29,28 @@ const filtered = computed(() => {
 async function load() {
   loading.value = true
   error.value = ''
-  try {
-    skills.value = await api.listSkills()
-    if (selected.value && !skills.value.some((s) => s.dir === selected.value)) selected.value = null
-    if (!selected.value && skills.value.length) await select(skills.value[0].dir)
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    loading.value = false
+  const maxRetries = 8
+  for (let i = 1; i <= maxRetries; i++) {
+    try {
+      if (i > 1) {
+        startMessage.value = `正在启动本地后端服务并连接 (${i}/${maxRetries})…`
+      }
+      skills.value = await api.listSkills()
+      error.value = ''
+      isStarting.value = false
+      if (selected.value && !skills.value.some((s) => s.dir === selected.value)) selected.value = null
+      if (!selected.value && skills.value.length) await select(skills.value[0].dir)
+      break
+    } catch (e) {
+      if (i < maxRetries) {
+        await new Promise((r) => setTimeout(r, 600))
+      } else {
+        error.value = e instanceof Error ? e.message : String(e)
+        isStarting.value = false
+      }
+    }
   }
+  loading.value = false
 }
 
 async function select(dir: string) {
@@ -92,7 +108,8 @@ onMounted(load)
             <RefreshCw :size="14" :class="{ spin: loading }" />
           </button>
         </div>
-        <p v-if="error" class="error pad">{{ error }}</p>
+        <p v-if="error && !isStarting" class="error pad">{{ error }}</p>
+        <p v-if="isStarting" class="muted pad"><Loader2 :size="12" class="spin" /> 正在加载…</p>
         <ul class="list">
           <li v-for="s in filtered" :key="s.dir">
             <button class="item" :class="{ active: s.dir === selected }" @click="select(s.dir)">
@@ -102,16 +119,20 @@ onMounted(load)
             </button>
           </li>
         </ul>
-        <p v-if="!loading && !filtered.length" class="muted pad">{{ skills.length ? '没有匹配的 Skill' : '暂无 Skill' }}</p>
+        <p v-if="!loading && !filtered.length && !isStarting" class="muted pad">{{ skills.length ? '没有匹配的 Skill' : '暂无 Skill' }}</p>
       </aside>
 
       <main class="content">
-        <div v-if="detailLoading" class="placeholder muted"><Loader2 :size="18" class="spin" />加载中…</div>
+        <div v-if="isStarting" class="placeholder muted">
+          <Loader2 :size="22" class="spin" />
+          <span>{{ startMessage }}</span>
+        </div>
+        <div v-else-if="detailLoading" class="placeholder muted"><Loader2 :size="18" class="spin" />加载中…</div>
         <div v-else-if="error && !skills.length" class="placeholder">
           <div class="empty-server-box">
             <AlertTriangle :size="36" class="warn" />
             <h3>无法连接本地后端服务</h3>
-            <p class="muted">客户端正在尝试连接 <code>http://127.0.0.1:3001</code>。请确保本地 API 服务已在终端启动：</p>
+            <p class="muted">客户端正在尝试连接 <code>http://127.0.0.1:3001</code>。后端服务可能启动受阻或端口被占用：</p>
             <pre class="code-box">npm run dev  # 或 npm start</pre>
             <button class="btn btn-primary" :disabled="loading" @click="load">
               <RefreshCw :size="14" :class="{ spin: loading }" />

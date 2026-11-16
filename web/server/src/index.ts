@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import express, { type NextFunction, type Request, type Response } from 'express'
 import { listTargets, syncToAgents, validateAgentSync } from './agents.js'
-import { HOST, PORT, REPO_ROOT } from './config.js'
+import { HOST, PORT, REPO_ROOT, initRepoRoot } from './config.js'
 import { HttpError } from './errors.js'
 import { importArchive, importFolder, uploadMiddleware } from './import.js'
 import { inspectSkill, installInspected, installSkill, validateInstall } from './install.js'
@@ -98,8 +98,15 @@ app.get('/api/skills/:name/file', async (req, res) => {
 
 app.put('/api/skills/:name/file', async (req, res) => {
   const origin = req.headers.origin
-  const allowedOrigins = new Set(['http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:3001', 'http://localhost:3001'])
-  if (!origin || !allowedOrigins.has(origin) || (req.headers['sec-fetch-site'] && req.headers['sec-fetch-site'] !== 'same-origin')) {
+  const allowedOrigins = new Set([
+    'http://127.0.0.1:5173',
+    'http://localhost:5173',
+    'http://127.0.0.1:3001',
+    'http://localhost:3001',
+    'http://tauri.localhost',
+    'tauri://localhost',
+  ])
+  if (!origin || !allowedOrigins.has(origin)) {
     throw new HttpError(403, '不允许从当前来源编辑文件')
   }
   if (!req.is('application/json')) throw new HttpError(415, '请求必须使用 application/json')
@@ -185,6 +192,8 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   }
   res.status(status).json({ error: message })
 })
+
+await initRepoRoot()
 
 app.listen(PORT, HOST, () => {
   console.log(`skills server listening on http://${HOST}:${PORT} (repo: ${REPO_ROOT})`)

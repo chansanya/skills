@@ -12,6 +12,7 @@
     "noUnusedParameters": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "resolveJsonModule": true,
     "sourceMap": true
   },
   "include": ["src"]

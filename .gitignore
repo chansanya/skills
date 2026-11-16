@@ -7,6 +7,7 @@ venv/
 web/server/dist/
 web/client/dist/
 src-tauri/target/
+src-tauri/binaries/
 
 # VuePress
 docs/.vuepress/.temp

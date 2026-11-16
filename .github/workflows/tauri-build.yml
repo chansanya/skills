@@ -36,6 +36,9 @@ jobs:
       - name: Build web workspaces
         run: npm run build
 
+      - name: Build Server Standalone Executable
+        run: node scripts/build-server-bin.js
+
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
         env:

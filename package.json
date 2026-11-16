@@ -1,6 +1,6 @@
 {
   "name": "skills",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "description": "日常使用的 Skill 合集管理仓库：Skill 收纳、Web 管理台与 VuePress 文档",
@@ -13,6 +13,7 @@
     "dev:server": "npm -w web/server run dev",
     "dev:client": "npm -w web/client run dev",
     "build": "npm -w web/server run build && npm -w web/client run build",
+    "build:server-bin": "node scripts/build-server-bin.js",
     "start": "npm -w web/server run start",
     "docs:dev": "vuepress dev docs",
     "docs:build": "vuepress build docs",
@@ -25,6 +26,8 @@
     "@vuepress/bundler-vite": "2.0.0-rc.31",
     "@vuepress/theme-default": "^2.0.0-rc.137",
     "concurrently": "^10.0.7",
+    "esbuild": "^0.25.0",
+    "postject": "^1.0.0-alpha.6",
     "sass-embedded": "^1.108.2",
     "vuepress": "2.0.0-rc.31"
   }
