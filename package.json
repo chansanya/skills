@@ -1,6 +1,6 @@
 {
   "name": "skills",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "type": "module",
   "description": "日常使用的 Skill 合集管理仓库：Skill 收纳、Web 管理台与 VuePress 文档",
