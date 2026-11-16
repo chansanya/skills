@@ -5,7 +5,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import builtinSkills from './builtin-skills.generated.json' with { type: 'json' }
 
-const here = path.dirname(fileURLToPath(import.meta.url))
+const here = typeof __dirname !== 'undefined'
+  ? __dirname
+  : path.dirname(fileURLToPath(import.meta.url))
 
 function resolveRepoRoot(): string {
   if (process.env.SKILLS_REPO_ROOT) {

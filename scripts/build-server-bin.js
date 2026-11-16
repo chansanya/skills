@@ -1,14 +1,19 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { execSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import * as esbuild from 'esbuild'
 
-const repoRoot = path.resolve('.')
+const here = path.dirname(fileURLToPath(import.meta.url))
+const repoRoot = path.resolve(here, '..')
 const binariesDir = path.join(repoRoot, 'src-tauri', 'binaries')
 fs.mkdirSync(binariesDir, { recursive: true })
 
 console.log('[build-server-bin] Step 1: Generating builtin-skills.generated.json...')
-execSync(`node "${path.join(repoRoot, 'scripts', 'generate-builtin-skills.mjs')}"`, { stdio: 'inherit' })
+execSync(`"${process.execPath}" "${path.join(repoRoot, 'scripts', 'generate-builtin-skills.mjs')}"`, {
+  cwd: repoRoot,
+  stdio: 'inherit',
+})
 
 console.log('[build-server-bin] Step 2: Bundling server with esbuild...')
 const bundleFile = path.join(binariesDir, 'server.bundle.cjs')
@@ -22,6 +27,10 @@ await esbuild.build({
   outfile: bundleFile,
   define: {
     'process.env.NODE_ENV': '"production"',
+    'import.meta.url': 'importMetaUrl',
+  },
+  banner: {
+    js: 'const importMetaUrl = require("url").pathToFileURL(__filename).toString();',
   },
 })
 

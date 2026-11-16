@@ -1,7 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const REPO_ROOT = path.resolve('.')
+const here = path.dirname(fileURLToPath(import.meta.url))
+const REPO_ROOT = path.resolve(here, '..')
 const IGNORED = new Set(['web', 'docs', 'node_modules', 'dist', '.git', 'src-tauri', 'scripts'])
 
 function getSkillDirs(dir) {

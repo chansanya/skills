@@ -193,8 +193,10 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(status).json({ error: message })
 })
 
-await initRepoRoot()
-
-app.listen(PORT, HOST, () => {
-  console.log(`skills server listening on http://${HOST}:${PORT} (repo: ${REPO_ROOT})`)
-})
+initRepoRoot()
+  .catch((err) => console.warn('[skills server] initRepoRoot error:', err))
+  .finally(() => {
+    app.listen(PORT, HOST, () => {
+      console.log(`skills server listening on http://${HOST}:${PORT} (repo: ${REPO_ROOT})`)
+    })
+  })
