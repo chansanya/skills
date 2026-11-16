@@ -15,9 +15,13 @@
     "build": "npm -w web/server run build && npm -w web/client run build",
     "start": "npm -w web/server run start",
     "docs:dev": "vuepress dev docs",
-    "docs:build": "vuepress build docs"
+    "docs:build": "vuepress build docs",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0",
     "@vuepress/bundler-vite": "2.0.0-rc.31",
     "@vuepress/theme-default": "^2.0.0-rc.137",
     "concurrently": "^10.0.7",

@@ -6,6 +6,7 @@ venv/
 # Build output
 web/server/dist/
 web/client/dist/
+src-tauri/target/
 
 # VuePress
 docs/.vuepress/.temp

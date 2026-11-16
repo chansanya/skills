@@ -2,6 +2,11 @@
 
 日常使用的 Skill 合集管理仓库：统一收纳、预览与维护各类 Skill，提供本地 Web 管理台（支持多方式导入、全文件在线预览与下发至各 Agent 全局目录），并通过 VuePress + GitHub Actions 自动发布文档。
 
+> [!IMPORTANT]
+> **本地运行机制与沙箱说明**  
+> Web 管理台是**本地工具**而非公网多租户 SaaS 服务。受浏览器沙箱安全限制，公网网页无法静默读取或直接写入用户本地的文件系统（如 `~/.claude/skills` 或 Windows 盘符路径）。  
+> 所有的目录扫描、文件写入、跨环境探测与软链接创建均由**运行在宿主机本地的服务端**执行。因此，**每个用户都必须在自己的电脑上启动**（或直接运行打包好的 Tauri 本地客户端），操作的始终是自己电脑的文件。
+
 ## 目录约定
 
 每个 Skill 平铺在仓库根目录，独立一个目录，必须包含带 YAML Frontmatter（`name`、`description`）的 `SKILL.md`：
@@ -64,6 +69,18 @@ npm start            # 运行构建后的 API 服务
 npm run docs:dev     # 本地预览文档
 npm run docs:build   # 构建文档到 docs/.vuepress/dist
 ```
+
+## 桌面客户端（Tauri .exe / 原生应用）
+
+如果不想每次从终端启动命令行，可以使用 **Tauri** 打包为单文件本地客户端（`.exe` / 原生桌面窗口）：
+
+- **超小体积**：利用系统内置 WebView（Windows 原生 Webview2），安装包仅约 10~20 MB。
+- **开箱即用**：双击即可启动独立窗口，直接操作当前电脑上的 Agent 技能目录。
+- **命令说明**：
+  ```bash
+  npm run tauri:dev    # 本地启动桌面客户端调试窗口
+  npm run tauri:build  # 构建可分发的 .exe 安装包与单文件程序
+  ```
 
 ## 安全说明
 
