@@ -119,7 +119,6 @@ function resolveMagpiePaths(): MagpiePaths | null {
 const AGENT_DEFS = [
   { key: 'claude-code', label: 'Claude Code', rel: '.claude/skills' },
   { key: 'codex', label: 'Codex', rel: '.codex/skills' },
-  { key: 'agents', label: 'Agents (Universal)', rel: '.agents/skills' },
   { key: 'antigravity', label: 'Antigravity', rel: '.gemini/antigravity/skills' },
   { key: 'antigravity-config', label: 'Antigravity (config)', rel: '.gemini/config/skills' },
   { key: 'cursor', label: 'Cursor', rel: '.cursor/skills' },
@@ -168,14 +167,19 @@ export function resolveMagpieCli(): string | null {
   }
 
   if (isWSL) {
-    try {
-      const winCli = execSync(
-        'cmd.exe /c "if exist \"%LOCALAPPDATA%\\Programs\\magpie\\magpie.com\" echo %LOCALAPPDATA%\\Programs\\magpie\\magpie.com"',
-        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000 },
-      ).trim()
-      if (winCli) return winCli
-    } catch {
-      // ignore
+    const paths = resolveMagpiePaths()
+    if (paths && paths.isCrossEnv) {
+      const userMnt = path.dirname(path.dirname(paths.configDir))
+      const winCliCandidate = path.join(userMnt, 'AppData', 'Local', 'Programs', 'magpie', 'magpie.com')
+      const winExeCandidate = path.join(userMnt, 'AppData', 'Local', 'Programs', 'magpie', 'magpie.exe')
+      const winUser = paths.displayPath.split('\\.config')[0]
+
+      if (fs.existsSync(winCliCandidate)) {
+        return `${winUser}\\AppData\\Local\\Programs\\magpie\\magpie.com`
+      }
+      if (fs.existsSync(winExeCandidate)) {
+        return `${winUser}\\AppData\\Local\\Programs\\magpie\\magpie.exe`
+      }
     }
   }
 
@@ -403,7 +407,8 @@ export async function migrateSkillToMagpie(
   agentKey: string,
   skillName: string,
   overwrite = false,
-): Promise<{ success: boolean; message: string }> {
+  skipExisting = false,
+): Promise<{ success: boolean; message: string; skipped?: boolean }> {
   const paths = resolveMagpiePaths()
   if (!paths || !fs.existsSync(paths.libraryDir)) {
     return { success: false, message: '未找到 Magpie Library 目录' }
@@ -424,6 +429,13 @@ export async function migrateSkillToMagpie(
 
   const destExists = fs.existsSync(destDir)
   if (destExists && !overwrite) {
+    if (skipExisting) {
+      return {
+        success: true,
+        skipped: true,
+        message: `Magpie 统一库中已存在「${skillName}」，已自动跳过`,
+      }
+    }
     return {
       success: false,
       message: `Magpie Library 中已存在同名 Skill「${skillName}」，如需覆盖请开启覆盖选项`,

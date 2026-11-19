@@ -66,7 +66,6 @@ const MAX_SKILLS = 500
 const AGENT_DEFS = [
   { key: 'claude-code', label: 'Claude Code', rel: '.claude/skills' },
   { key: 'codex', label: 'Codex', rel: '.codex/skills' },
-  { key: 'agents', label: 'Agents (Universal)', rel: '.agents/skills' },
   { key: 'antigravity', label: 'Antigravity', rel: '.gemini/antigravity/skills' },
   { key: 'antigravity-config', label: 'Antigravity (config)', rel: '.gemini/config/skills' },
   { key: 'cursor', label: 'Cursor', rel: '.cursor/skills' },

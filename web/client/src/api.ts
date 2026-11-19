@@ -239,8 +239,8 @@ export const api = {
   refreshMagpie: () => request<MagpieStatus>('/api/magpie/refresh', { method: 'POST' }),
   syncMagpie: () => request<{ success: boolean; message: string }>('/api/magpie/sync', { method: 'POST' }),
   listMigratableSkills: () => request<{ skills: MigratableSkill[] }>('/api/magpie/migratable').then((r) => r.skills),
-  migrateSkillToMagpie: (payload: { agentKey: string; skillName: string; overwrite?: boolean }) =>
-    request<{ success: boolean; message: string }>('/api/magpie/migrate', {
+  migrateSkillToMagpie: (payload: { agentKey: string; skillName: string; overwrite?: boolean; skipExisting?: boolean }) =>
+    request<{ success: boolean; message: string; skipped?: boolean }>('/api/magpie/migrate', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),

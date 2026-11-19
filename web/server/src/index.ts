@@ -203,14 +203,14 @@ app.get('/api/magpie/migratable', async (_req, res) => {
 })
 
 app.post('/api/magpie/migrate', async (req, res) => {
-  const { agentKey, skillName, overwrite } = req.body ?? {}
+  const { agentKey, skillName, overwrite, skipExisting } = req.body ?? {}
   if (!agentKey || typeof agentKey !== 'string') {
     throw new HttpError(400, '缺少 agentKey 参数')
   }
   if (!skillName || typeof skillName !== 'string') {
     throw new HttpError(400, '缺少 skillName 参数')
   }
-  const result = await migrateSkillToMagpie(agentKey, skillName, overwrite === true)
+  const result = await migrateSkillToMagpie(agentKey, skillName, overwrite === true, skipExisting === true)
   if (!result.success) {
     throw new HttpError(400, result.message)
   }

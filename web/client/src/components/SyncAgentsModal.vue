@@ -55,6 +55,32 @@ const loadingMigratable = ref(false)
 const migratingSkillName = ref<string | null>(null)
 const migrateMessage = ref('')
 const migrateOverwrite = ref(false)
+const migrateSkipExisting = ref(true)
+const hideExisting = ref(false)
+
+function onToggleOverwrite() {
+  if (migrateOverwrite.value) {
+    migrateSkipExisting.value = false
+  }
+}
+
+function onToggleSkipExisting() {
+  if (migrateSkipExisting.value) {
+    migrateOverwrite.value = false
+  }
+}
+
+const displayMigratableSkills = computed(() => {
+  if (!hideExisting.value) return migratableSkills.value
+  return migratableSkills.value.filter((s) => !s.existsInMagpieLibrary)
+})
+
+const pendingMigrateCount = computed(() => {
+  if (migrateSkipExisting.value) {
+    return migratableSkills.value.filter((s) => !s.existsInMagpieLibrary).length
+  }
+  return migratableSkills.value.length
+})
 
 const wslTargets = computed(() => targets.value.filter((t) => t.env === 'wsl'))
 const hostTargets = computed(() => targets.value.filter((t) => t.env === 'host'))
@@ -151,6 +177,7 @@ async function handleMigrate(item: MigratableSkill) {
       agentKey: item.agentKey,
       skillName: item.skillName,
       overwrite: migrateOverwrite.value,
+      skipExisting: migrateSkipExisting.value,
     })
     migrateMessage.value = res.message
     await loadMigratableSkills()
@@ -164,10 +191,22 @@ async function handleMigrate(item: MigratableSkill) {
 }
 
 async function handleMigrateAll() {
-  if (!migratableSkills.value.length) return
-  if (!confirm(`确定将扫描到的 ${migratableSkills.value.length} 个独立 Skill 统一迁移到 Magpie 统一库吗？`)) return
+  const itemsToMigrate = migrateSkipExisting.value
+    ? migratableSkills.value.filter((s) => !s.existsInMagpieLibrary)
+    : migratableSkills.value
 
-  for (const item of [...migratableSkills.value]) {
+  if (!itemsToMigrate.length) {
+    alert('当前没有需要迁移的技能（重复项已全部跳过）')
+    return
+  }
+
+  const promptText = migrateSkipExisting.value
+    ? `确定将 ${itemsToMigrate.length} 个未在统一库中的 Skill 迁移到 Magpie 统一库吗？`
+    : `确定将全部 ${itemsToMigrate.length} 个 Skill 迁移到 Magpie 统一库吗？${migrateOverwrite.value ? '（已开启同名覆盖）' : ''}`
+
+  if (!confirm(promptText)) return
+
+  for (const item of itemsToMigrate) {
     await handleMigrate(item)
   }
 }
@@ -289,11 +328,9 @@ onMounted(loadTargets)
               <div class="magpie-title">
                 <strong>Magpie 统一库就绪</strong>
                 <span v-if="magpie.version" class="badge badge-version">v{{ magpie.version }}</span>
-                <span class="badge" :class="magpie.gatewayOnline ? 'badge-ok' : 'badge-dim'">
-                  {{ magpie.gatewayOnline ? 'Gateway 在线' : 'Gateway 离线' }}
-                </span>
-                <span class="badge" :class="magpie.cliAvailable ? 'badge-ok' : 'badge-warn'">
-                  {{ magpie.cliAvailable ? 'CLI 自动分发支持' : '无 CLI' }}
+                <span v-if="magpie.gatewayOnline" class="badge badge-ok">Gateway 在线</span>
+                <span class="badge" :class="magpie.cliAvailable ? 'badge-ok' : 'badge-dim'">
+                  {{ magpie.cliAvailable ? 'CLI 自动分发支持' : '手动分发' }}
                 </span>
               </div>
               <p class="magpie-desc">
@@ -475,31 +512,40 @@ onMounted(loadTargets)
             <div class="section-head">
               <label>检测各 Agent 目录中的孤岛 Skill（非 Junction 管理）</label>
               <div class="quick-actions">
-                <label class="check migrate-chk">
-                  <input v-model="migrateOverwrite" type="checkbox" />
-                  若 Magpie 统一库已有同名则覆盖
+                <label class="check migrate-chk" title="若统一库已存在同名 Skill 则跳过不重复处理">
+                  <input v-model="migrateSkipExisting" type="checkbox" @change="onToggleSkipExisting" />
+                  跳过重复
+                </label>
+                <label class="check migrate-chk" title="若统一库已存在同名 Skill 则强制覆盖">
+                  <input v-model="migrateOverwrite" type="checkbox" @change="onToggleOverwrite" />
+                  覆盖重复
+                </label>
+                <label class="check migrate-chk" title="在列表中仅显示统一库中尚未拥有的 Skill">
+                  <input v-model="hideExisting" type="checkbox" />
+                  仅看未入库
                 </label>
                 <button
                   v-if="migratableSkills.length > 0"
                   type="button"
                   class="btn btn-sm btn-primary"
-                  :disabled="loadingMigratable || migratingSkillName !== null"
+                  :disabled="loadingMigratable || migratingSkillName !== null || pendingMigrateCount === 0"
                   @click="handleMigrateAll"
                 >
-                  一键全部迁移 ({{ migratableSkills.length }})
+                  一键迁移 ({{ pendingMigrateCount }})
                 </button>
               </div>
             </div>
 
             <p v-if="loadingMigratable" class="muted">正在扫描各 Agent 目录中的独立技能…</p>
 
-            <div v-else-if="!migratableSkills.length" class="empty-box">
+            <div v-else-if="!displayMigratableSkills.length" class="empty-box">
               <CheckCircle2 :size="24" class="ok" />
-              <p>太棒了！所有检测到的 Agent 技能均已接入 Magpie Junction 统一管理，无孤岛技能。</p>
+              <p v-if="migratableSkills.length > 0 && hideExisting">已隐藏全部 {{ migratableSkills.length }} 个统一库已存在的重复项。</p>
+              <p v-else>太棒了！所有检测到的 Agent 技能均已接入 Magpie Junction 统一管理，无孤岛技能。</p>
             </div>
 
             <div v-else class="migrate-list">
-              <div v-for="item in migratableSkills" :key="`${item.agentKey}:${item.skillName}`" class="migrate-item">
+              <div v-for="item in displayMigratableSkills" :key="`${item.agentKey}:${item.skillName}`" class="migrate-item">
                 <div class="migrate-item-info">
                   <div class="migrate-title">
                     <span class="badge badge-info">{{ item.agentLabel }}</span>
@@ -516,7 +562,7 @@ onMounted(loadTargets)
                 >
                   <Loader2 v-if="migratingSkillName === `${item.agentKey}:${item.skillName}`" :size="13" class="spin" />
                   <ArrowRight v-else :size="13" />
-                  迁移并建立链接
+                  {{ item.existsInMagpieLibrary ? '入库更新' : '迁移入库' }}
                 </button>
               </div>
             </div>
