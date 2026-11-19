@@ -28,6 +28,8 @@ export interface MagpieStatus {
   junctions: MagpieJunction[]
   /** Magpie CLI 是否可用 */
   cliAvailable: boolean
+  /** Magpie 实际配置分发的 Agent 标识列表（来自 library.json） */
+  activeDistributionTargets: string[]
 }
 
 export interface MigratableSkill {
@@ -119,8 +121,7 @@ function resolveMagpiePaths(): MagpiePaths | null {
 const AGENT_DEFS = [
   { key: 'claude-code', label: 'Claude Code', rel: '.claude/skills' },
   { key: 'codex', label: 'Codex', rel: '.codex/skills' },
-  { key: 'antigravity', label: 'Antigravity', rel: '.gemini/antigravity/skills' },
-  { key: 'antigravity-config', label: 'Antigravity (config)', rel: '.gemini/config/skills' },
+  { key: 'antigravity', label: 'Antigravity', rel: '.gemini/config/skills' },
   { key: 'cursor', label: 'Cursor', rel: '.cursor/skills' },
 ]
 
@@ -247,6 +248,7 @@ export async function detectMagpie(): Promise<MagpieStatus> {
     gatewayOnline: false,
     junctions: [],
     cliAvailable: false,
+    activeDistributionTargets: [],
   }
 
   if (!paths || !fs.existsSync(paths.libraryDir)) {
@@ -284,6 +286,29 @@ export async function detectMagpie(): Promise<MagpieStatus> {
 
   result.junctions = await scanJunctions(paths)
   result.cliAvailable = resolveMagpieCli() !== null
+
+  // 尝试读取 library.json 提取 Magpie 实际勾选并分发到的 agents 目标名单
+  result.activeDistributionTargets = []
+  try {
+    const libJsonPath = path.join(paths.configDir, 'library.json')
+    if (fs.existsSync(libJsonPath)) {
+      const libRaw = await readFile(libJsonPath, 'utf8')
+      const libData = JSON.parse(libRaw)
+      const targetSet = new Set<string>()
+      if (Array.isArray(libData.skills)) {
+        for (const sk of libData.skills) {
+          if (Array.isArray(sk.agents)) {
+            for (const ag of sk.agents) {
+              if (typeof ag === 'string') targetSet.add(ag)
+            }
+          }
+        }
+      }
+      result.activeDistributionTargets = Array.from(targetSet)
+    }
+  } catch {
+    // ignore
+  }
 
   return result
 }
@@ -374,11 +399,17 @@ export async function scanMigratableSkills(): Promise<MigratableSkill[]> {
 
       const fullPath = path.join(agent.dir, entry.name)
       try {
+        // 关键防护：如果 Magpie 统一库中已经存在此技能，
+        // 说明该技能已经受 Magpie 纳管。无论下发到该 Agent 是通过 Junction 链接
+        // 还是通过实体文件复制（如 Antigravity 不支持软链接采用 copy 模式），
+        // 都属于受控副本，绝不能再作为孤岛技能反复提示迁移，杜绝死循环！
+        if (managedSet.has(entry.name)) continue
+
         const stat = await lstat(fullPath)
         // 如果是符号链接/Junction，检查是不是指向 Magpie
         if (stat.isSymbolicLink()) {
           const target = await readlink(fullPath)
-          if (target.includes('magpie')) continue // 已经是 Magpie 管理的，不需迁移
+          if (target.includes('magpie')) continue
         }
 
         if (junctionMap.has(`${agent.key}:${entry.name}`)) continue
@@ -389,7 +420,7 @@ export async function scanMigratableSkills(): Promise<MigratableSkill[]> {
           skillName: entry.name,
           path: fullPath,
           displayPath: `${agent.displayPrefix}\\${entry.name}`,
-          existsInMagpieLibrary: managedSet.has(entry.name),
+          existsInMagpieLibrary: false,
         })
       } catch {
         // ignore

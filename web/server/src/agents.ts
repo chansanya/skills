@@ -66,8 +66,7 @@ const MAX_SKILLS = 500
 const AGENT_DEFS = [
   { key: 'claude-code', label: 'Claude Code', rel: '.claude/skills' },
   { key: 'codex', label: 'Codex', rel: '.codex/skills' },
-  { key: 'antigravity', label: 'Antigravity', rel: '.gemini/antigravity/skills' },
-  { key: 'antigravity-config', label: 'Antigravity (config)', rel: '.gemini/config/skills' },
+  { key: 'antigravity', label: 'Antigravity', rel: '.gemini/config/skills' },
   { key: 'cursor', label: 'Cursor', rel: '.cursor/skills' },
 ]
 
@@ -295,15 +294,6 @@ async function buildAllPresetsWithMagpie(): Promise<AgentTarget[]> {
         isMagpieLibrary: true,
       }
       presets.unshift(magpieTarget)
-
-      // 标记哪些 Agent 目录中已有 Magpie Junction
-      const managedKeys = new Set(magpie.junctions.map((j) => j.agentKey))
-      for (const p of presets) {
-        const rawKey = p.id.replace(/^(wsl|host):/, '')
-        if (managedKeys.has(rawKey)) {
-          p.magpieManaged = true
-        }
-      }
     }
   } catch {
     // ignore
@@ -313,13 +303,47 @@ async function buildAllPresetsWithMagpie(): Promise<AgentTarget[]> {
 
 export async function listTargets(): Promise<AgentTarget[]> {
   const presets = await buildAllPresetsWithMagpie()
-  return Promise.all(
-    presets.map(async (p) => ({
-      ...p,
-      parentExists: await exists(path.dirname(p.path)),
-      exists: await exists(p.path),
-    })),
+  const magpie = await getMagpieStatus().catch(() => null)
+  const junctionKeys = new Set(magpie?.junctions.map((j) => j.agentKey) || [])
+  const distTargets = new Set(magpie?.activeDistributionTargets || [])
+
+  const targets = await Promise.all(
+    presets.map(async (p) => {
+      const parentExists = await exists(path.dirname(p.path))
+      const targetExists = await exists(p.path)
+      let magpieManaged = false
+
+      // 只有在该目录真实存在（已安装该 Agent 或已创建技能目录）时，才检测 Magpie 分发状态
+      if (magpie?.detected && (parentExists || targetExists) && !p.isMagpieLibrary) {
+        const rawKey = p.id.replace(/^(wsl|host):/, '')
+        const isJunctionManaged = junctionKeys.has(rawKey)
+        let isDistTarget = false
+
+        if (p.env === 'wsl') {
+          // WSL 环境下，必须严格匹配 Magpie 中带 @wsl 的分发目标
+          isDistTarget = Array.from(distTargets).some((t) => t.startsWith(`${rawKey}@wsl`))
+        } else {
+          // 宿主环境下匹配单纯的 agent key
+          isDistTarget =
+            distTargets.has(rawKey) ||
+            (rawKey.startsWith('antigravity') && distTargets.has('antigravity'))
+        }
+
+        if (isJunctionManaged || isDistTarget) {
+          magpieManaged = true
+        }
+      }
+
+      return {
+        ...p,
+        parentExists,
+        exists: targetExists,
+        magpieManaged,
+      }
+    }),
   )
+
+  return targets
 }
 
 function resolveCustomTarget(raw: string): TargetItem {

@@ -3,7 +3,7 @@
 本仓库是日常使用的 Skill 合集，包含三部分：
 
 - **Skill 目录**：仓库根目录下的每个 `<skill-name>/` 目录即一个 Skill。
-- **Web 管理台 / 桌面端**：`web/server`（本地 API）+ `web/client`（Vue 3 界面），支持通过 Tauri 打包为独立 `.exe`。
+- **Web 管理台 / 桌面端**：`web/server`（本地 API）+ `web/client`（Vue 3 界面），支持通过 Tauri 打包为独立 `.exe`，内置对 Magpie 统一库的深度协同与自动分发。
 - **文档站点**：`docs/`（VuePress v2），推送到 `main` 后自动发布到 `gh-pages`。
 
 ::: tip 运行模型与本地沙箱说明

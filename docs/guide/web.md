@@ -69,8 +69,10 @@ npm run dev
   - **本地文件夹**：直接选择本地文件夹上传导入（支持自定义目录名与覆盖）；
   - **压缩包**：上传 `.zip`、`.tar.gz` 或 `.tgz` 压缩包（最大 `20 MB`），自动校验 `SKILL.md` Frontmatter 并原子落盘。
 - **同步到 Agent 总目录（WSL / 主机环境区分）**：支持多选 Skill，一键下发到本地 Agent 全局目录：
-  - **环境自适应**：在 Windows 与 WSL 环境下自动双向互嗅（Windows 下嗅探 WSL，WSL 下嗅探宿主 Windows），存在时提供「主机」与「WSL」两个独立切换选项；在 macOS 或原生 Linux 环境下不嗅探 WSL，直接作为单主机的「主机」选项；
-  - **下发方式**：同环境（WSL 内或主机自身）默认采用高效的「软链接」（亦可切「复制文件」）；跨环境（WSL 与 Windows 主机之间跨边界）则移除软链接，强制采用「复制文件」，确保原生应用兼容；
+  - **Magpie 统一库深度协同（优先推荐）**：系统自动探测电脑中安装的 Magpie（`~/.config/magpie/library/skills/`）；若检测到 Magpie，管理台将 Magpie 统一库置顶作为首选同步目标，写入后自动调用 Magpie CLI 执行 `magpie library sync`，由 Magpie 自动通过 NTFS Junction 或复制方式分发给各个已激活的 Agent（如 Codex、Antigravity、Claude Code 等）；
+  - **孤岛技能扫描与一键纳管**：智能扫描各个 Agent 目录（如 `.claude/skills`、`.codex/skills` 等）中未被 Magpie 统一库管理的本地独立技能，支持一键安全迁移入库并自动接入 Magpie 分发管理，有效杜绝循环覆盖；
+  - **环境自适应**：在 Windows 与 WSL 环境下自动双向互嗅（Windows 下嗅探 WSL，WSL 下嗅探宿主 Windows），存在时提供「主机」与「WSL」两个独立切换选项；在 macOS 或原生 Linux 环境下不嗅探 WSL，直接作为单主机的「主机」选项；仅展示当前环境下真实安装的 Agent，自动过滤未安装的幽灵选项，防止误选；
+  - **下发方式**：同环境（WSL 内或主机自身）默认采用高效的「软链接」（亦可切「复制文件」）；跨环境（WSL 与 Windows 主机之间跨边界）以及 Magpie 统一库则强制采用「复制文件」，确保 Windows 原生应用与符号链接兼容；
   - **自定义目录**：支持在对应视图下额外添加自定义 `~/...` 或 Windows 盘符路径。
 
 ## API 参考
@@ -91,8 +93,13 @@ npm run dev
 | `POST` | `/api/skills/install` | 从 GitHub 仓库安装指定 Skill（SSE 实时日志流） |
 | `POST` | `/api/skills/import-folder` | 上传本地文件夹导入 Skill（`multipart/form-data`） |
 | `POST` | `/api/skills/import-archive` | 上传 `.zip` / `.tar.gz` / `.tgz` 导入 Skill |
-| `GET` | `/api/agents/targets` | 检测并返回预置 Agent 全局目录状态 |
-| `POST` | `/api/agents/sync` | 将选定 Skill 同步到选定 Agent 目录 |
+| `GET` | `/api/agents/targets` | 检测并返回预置 Agent 全局目录及 Magpie 状态 |
+| `POST` | `/api/agents/sync` | 将选定 Skill 同步到选定 Agent 或 Magpie 统一库 |
+| `GET` | `/api/magpie/status` | 获取本地 Magpie 安装状态、版本号及分发信息 |
+| `POST` | `/api/magpie/refresh` | 刷新 Magpie 状态缓存并重新检测 |
+| `POST` | `/api/magpie/sync` | 手动触发 Magpie library sync 分发命令 |
+| `GET` | `/api/magpie/migratable` | 扫描各 Agent 目录下尚未纳入 Magpie 统一库的孤岛 Skill |
+| `POST` | `/api/magpie/migrate` | 将孤立的本地 Skill 迁移入 Magpie 统一库并建立分发链接 |
 
 ### `POST /api/skills/install`
 

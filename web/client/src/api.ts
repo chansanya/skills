@@ -110,6 +110,7 @@ export interface MagpieStatus {
   gatewayOnline: boolean
   junctions: MagpieJunction[]
   cliAvailable: boolean
+  activeDistributionTargets?: string[]
 }
 
 export interface MigratableSkill {

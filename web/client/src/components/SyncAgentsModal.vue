@@ -55,20 +55,16 @@ const loadingMigratable = ref(false)
 const migratingSkillName = ref<string | null>(null)
 const migrateMessage = ref('')
 const migrateOverwrite = ref(false)
-const hideExisting = ref(false)
-
-const unmanagedCount = computed(() => migratableSkills.value.filter((s) => !s.existsInMagpieLibrary).length)
-
-const displayMigratableSkills = computed(() => {
-  if (!hideExisting.value) return migratableSkills.value
-  return migratableSkills.value.filter((s) => !s.existsInMagpieLibrary)
-})
 
 const wslTargets = computed(() => targets.value.filter((t) => t.env === 'wsl'))
 const hostTargets = computed(() => targets.value.filter((t) => t.env === 'host'))
 const hasWSL = computed(() => wslTargets.value.length > 0)
 const hasHost = computed(() => hostTargets.value.length > 0)
-const currentTargets = computed(() => (envTab.value === 'wsl' ? wslTargets.value : hostTargets.value))
+const currentTargets = computed(() => {
+  const list = envTab.value === 'wsl' ? wslTargets.value : hostTargets.value
+  // 仅展示实际检测到已安装的目标（或 Magpie 统一库），过滤掉未检测到的幽灵选项，防止误选
+  return list.filter((t) => t.isMagpieLibrary || t.parentExists || t.exists)
+})
 const isCrossEnv = computed(() => currentTargets.value.some((t) => t.isCrossEnv))
 
 const allSkillsSelected = computed(
@@ -83,8 +79,13 @@ function switchEnvTab(tab: 'wsl' | 'host') {
   if (envTab.value === tab) return
   envTab.value = tab
   customTargets.value = []
-  const list = tab === 'wsl' ? wslTargets.value : hostTargets.value
-  selectedTargets.value = list.filter((t) => t.parentExists || t.exists).map((t) => t.id)
+  const list = currentTargets.value
+  const magpieTarget = list.find((t) => t.isMagpieLibrary)
+  if (magpieTarget) {
+    selectedTargets.value = [magpieTarget.id]
+  } else {
+    selectedTargets.value = list.map((t) => t.id)
+  }
   mode.value = isCrossEnv.value ? 'copy' : 'symlink'
 }
 
@@ -172,16 +173,12 @@ async function handleMigrate(item: MigratableSkill) {
 }
 
 async function handleMigrateAll() {
-  const itemsToMigrate = displayMigratableSkills.value
-  if (!itemsToMigrate.length) return
+  if (!migratableSkills.value.length) return
 
-  const promptText = hideExisting.value
-    ? `确定将未入库的 ${itemsToMigrate.length} 个 Skill 接入 Magpie 统一库吗？`
-    : `确定将显示的全部 ${itemsToMigrate.length} 个 Skill 接入 Magpie 统一库并建立链接吗？${migrateOverwrite.value ? '（已开启同名覆盖）' : '（同名将保留统一库现有版本）'}`
-
+  const promptText = `确定将扫描到的 ${migratableSkills.value.length} 个未入库 Skill 迁移并录入 Magpie 统一库吗？`
   if (!confirm(promptText)) return
 
-  for (const item of itemsToMigrate) {
+  for (const item of [...migratableSkills.value]) {
     await handleMigrate(item)
   }
 }
@@ -402,14 +399,19 @@ onMounted(loadTargets)
                 class="target-row"
                 :class="{ 'target-magpie-lib': t.isMagpieLibrary }"
               >
-                <input v-model="selectedTargets" type="checkbox" :value="t.id" :disabled="syncing" />
+                <input
+                  v-model="selectedTargets"
+                  type="checkbox"
+                  :value="t.id"
+                  :disabled="syncing"
+                />
                 <span class="target-name">
                   {{ t.label }}
                   <span v-if="t.isMagpieLibrary" class="badge badge-magpie-rec">首选推荐</span>
                 </span>
                 <code class="mono target-path" :title="t.path">{{ t.displayPath }}</code>
-                <span v-if="t.magpieManaged" class="badge badge-warn" title="此 Agent 目录中已有 Magpie 管理的 Junction 条目">
-                  ⚠ Magpie 管理中
+                <span v-if="magpie?.detected && !t.isMagpieLibrary && t.magpieManaged" class="badge badge-info" title="已接入 Magpie 自动分发，写入统一库即可自动同步">
+                  Magpie 自动分发
                 </span>
                 <span v-if="t.isCrossEnv" class="badge badge-cross" title="跨环境同步：Windows 原生兼容">跨主机复制</span>
                 <span class="badge" :class="t.exists ? 'badge-ok' : (t.parentExists ? 'badge-info' : 'badge-dim')">
@@ -485,43 +487,34 @@ onMounted(loadTargets)
         <template v-else-if="activeTab === 'migrate'">
           <div class="section">
             <div class="section-head">
-              <label>检测各 Agent 目录中的孤岛 Skill（非 Junction 管理）</label>
+              <label>检测未纳入 Magpie 统一库的孤岛 Skill（共 {{ migratableSkills.length }} 个）</label>
               <div class="quick-actions">
-                <label class="check migrate-chk" title="若统一库已存在同名 Skill 则强制用本地目录覆盖更新统一库">
-                  <input v-model="migrateOverwrite" type="checkbox" />
-                  覆盖统一库同名
-                </label>
-                <label class="check migrate-chk" title="仅查看尚未录入统一库的技能">
-                  <input v-model="hideExisting" type="checkbox" />
-                  仅看未入库 ({{ unmanagedCount }})
-                </label>
                 <button
                   v-if="migratableSkills.length > 0"
                   type="button"
                   class="btn btn-sm btn-primary"
-                  :disabled="loadingMigratable || migratingSkillName !== null || displayMigratableSkills.length === 0"
+                  :disabled="loadingMigratable || migratingSkillName !== null"
                   @click="handleMigrateAll"
                 >
-                  一键全部迁移 ({{ displayMigratableSkills.length }})
+                  一键迁移入库 ({{ migratableSkills.length }})
                 </button>
               </div>
             </div>
 
             <p v-if="loadingMigratable" class="muted">正在扫描各 Agent 目录中的独立技能…</p>
 
-            <div v-else-if="!displayMigratableSkills.length" class="empty-box">
+            <div v-else-if="!migratableSkills.length" class="empty-box">
               <CheckCircle2 :size="24" class="ok" />
-              <p v-if="migratableSkills.length > 0 && hideExisting">已隐藏全部 {{ migratableSkills.length }} 个统一库已存在的重复项。</p>
-              <p v-else>太棒了！所有检测到的 Agent 技能均已接入 Magpie Junction 统一管理，无孤岛技能。</p>
+              <p>太棒了！所有检测到的 Agent 技能均已由 Magpie 统一接管（包含 Junction 链接与 Antigravity 自动复制），无孤岛技能。</p>
             </div>
 
             <div v-else class="migrate-list">
-              <div v-for="item in displayMigratableSkills" :key="`${item.agentKey}:${item.skillName}`" class="migrate-item">
+              <div v-for="item in migratableSkills" :key="`${item.agentKey}:${item.skillName}`" class="migrate-item">
                 <div class="migrate-item-info">
                   <div class="migrate-title">
                     <span class="badge badge-info">{{ item.agentLabel }}</span>
                     <strong class="mono">{{ item.skillName }}</strong>
-                    <span v-if="item.existsInMagpieLibrary" class="badge badge-warn">统一库中已存在</span>
+                    <span class="badge badge-warn">未录入统一库</span>
                   </div>
                   <code class="mono muted migrate-path">{{ item.displayPath }}</code>
                 </div>
@@ -533,7 +526,7 @@ onMounted(loadTargets)
                 >
                   <Loader2 v-if="migratingSkillName === `${item.agentKey}:${item.skillName}`" :size="13" class="spin" />
                   <ArrowRight v-else :size="13" />
-                  {{ item.existsInMagpieLibrary ? '入库更新' : '迁移入库' }}
+                  迁移入库
                 </button>
               </div>
             </div>
@@ -595,6 +588,7 @@ onMounted(loadTargets)
 .badge-version { background: rgba(138, 92, 246, 0.2); color: #c084fc; font-size: 10px; }
 .badge-magpie-rec { background: rgba(138, 92, 246, 0.25); color: #d8b4fe; border: 1px solid rgba(138, 92, 246, 0.4); font-weight: 600; }
 .target-magpie-lib { border-color: rgba(138, 92, 246, 0.4); background: rgba(138, 92, 246, 0.05); }
+.target-disabled { opacity: 0.6; cursor: not-allowed; }
 
 .section { display: flex; flex-direction: column; gap: 8px; }
 .section-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
