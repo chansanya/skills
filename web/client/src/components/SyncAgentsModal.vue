@@ -55,31 +55,13 @@ const loadingMigratable = ref(false)
 const migratingSkillName = ref<string | null>(null)
 const migrateMessage = ref('')
 const migrateOverwrite = ref(false)
-const migrateSkipExisting = ref(true)
 const hideExisting = ref(false)
 
-function onToggleOverwrite() {
-  if (migrateOverwrite.value) {
-    migrateSkipExisting.value = false
-  }
-}
-
-function onToggleSkipExisting() {
-  if (migrateSkipExisting.value) {
-    migrateOverwrite.value = false
-  }
-}
+const unmanagedCount = computed(() => migratableSkills.value.filter((s) => !s.existsInMagpieLibrary).length)
 
 const displayMigratableSkills = computed(() => {
   if (!hideExisting.value) return migratableSkills.value
   return migratableSkills.value.filter((s) => !s.existsInMagpieLibrary)
-})
-
-const pendingMigrateCount = computed(() => {
-  if (migrateSkipExisting.value) {
-    return migratableSkills.value.filter((s) => !s.existsInMagpieLibrary).length
-  }
-  return migratableSkills.value.length
 })
 
 const wslTargets = computed(() => targets.value.filter((t) => t.env === 'wsl'))
@@ -177,7 +159,6 @@ async function handleMigrate(item: MigratableSkill) {
       agentKey: item.agentKey,
       skillName: item.skillName,
       overwrite: migrateOverwrite.value,
-      skipExisting: migrateSkipExisting.value,
     })
     migrateMessage.value = res.message
     await loadMigratableSkills()
@@ -191,18 +172,12 @@ async function handleMigrate(item: MigratableSkill) {
 }
 
 async function handleMigrateAll() {
-  const itemsToMigrate = migrateSkipExisting.value
-    ? migratableSkills.value.filter((s) => !s.existsInMagpieLibrary)
-    : migratableSkills.value
+  const itemsToMigrate = displayMigratableSkills.value
+  if (!itemsToMigrate.length) return
 
-  if (!itemsToMigrate.length) {
-    alert('当前没有需要迁移的技能（重复项已全部跳过）')
-    return
-  }
-
-  const promptText = migrateSkipExisting.value
-    ? `确定将 ${itemsToMigrate.length} 个未在统一库中的 Skill 迁移到 Magpie 统一库吗？`
-    : `确定将全部 ${itemsToMigrate.length} 个 Skill 迁移到 Magpie 统一库吗？${migrateOverwrite.value ? '（已开启同名覆盖）' : ''}`
+  const promptText = hideExisting.value
+    ? `确定将未入库的 ${itemsToMigrate.length} 个 Skill 接入 Magpie 统一库吗？`
+    : `确定将显示的全部 ${itemsToMigrate.length} 个 Skill 接入 Magpie 统一库并建立链接吗？${migrateOverwrite.value ? '（已开启同名覆盖）' : '（同名将保留统一库现有版本）'}`
 
   if (!confirm(promptText)) return
 
@@ -512,26 +487,22 @@ onMounted(loadTargets)
             <div class="section-head">
               <label>检测各 Agent 目录中的孤岛 Skill（非 Junction 管理）</label>
               <div class="quick-actions">
-                <label class="check migrate-chk" title="若统一库已存在同名 Skill 则跳过不重复处理">
-                  <input v-model="migrateSkipExisting" type="checkbox" @change="onToggleSkipExisting" />
-                  跳过重复
+                <label class="check migrate-chk" title="若统一库已存在同名 Skill 则强制用本地目录覆盖更新统一库">
+                  <input v-model="migrateOverwrite" type="checkbox" />
+                  覆盖统一库同名
                 </label>
-                <label class="check migrate-chk" title="若统一库已存在同名 Skill 则强制覆盖">
-                  <input v-model="migrateOverwrite" type="checkbox" @change="onToggleOverwrite" />
-                  覆盖重复
-                </label>
-                <label class="check migrate-chk" title="在列表中仅显示统一库中尚未拥有的 Skill">
+                <label class="check migrate-chk" title="仅查看尚未录入统一库的技能">
                   <input v-model="hideExisting" type="checkbox" />
-                  仅看未入库
+                  仅看未入库 ({{ unmanagedCount }})
                 </label>
                 <button
                   v-if="migratableSkills.length > 0"
                   type="button"
                   class="btn btn-sm btn-primary"
-                  :disabled="loadingMigratable || migratingSkillName !== null || pendingMigrateCount === 0"
+                  :disabled="loadingMigratable || migratingSkillName !== null || displayMigratableSkills.length === 0"
                   @click="handleMigrateAll"
                 >
-                  一键迁移 ({{ pendingMigrateCount }})
+                  一键全部迁移 ({{ displayMigratableSkills.length }})
                 </button>
               </div>
             </div>

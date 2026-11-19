@@ -407,8 +407,7 @@ export async function migrateSkillToMagpie(
   agentKey: string,
   skillName: string,
   overwrite = false,
-  skipExisting = false,
-): Promise<{ success: boolean; message: string; skipped?: boolean }> {
+): Promise<{ success: boolean; message: string }> {
   const paths = resolveMagpiePaths()
   if (!paths || !fs.existsSync(paths.libraryDir)) {
     return { success: false, message: '未找到 Magpie Library 目录' }
@@ -428,38 +427,31 @@ export async function migrateSkillToMagpie(
   }
 
   const destExists = fs.existsSync(destDir)
-  if (destExists && !overwrite) {
-    if (skipExisting) {
-      return {
-        success: true,
-        skipped: true,
-        message: `Magpie 统一库中已存在「${skillName}」，已自动跳过`,
-      }
-    }
-    return {
-      success: false,
-      message: `Magpie Library 中已存在同名 Skill「${skillName}」，如需覆盖请开启覆盖选项`,
-    }
-  }
 
   try {
-    // 1. 如果 Magpie library 中不存在，将源目录完整复制到 library
+    // 1. 如果统一库中不存在，将源目录完整复制入库；若已存在且勾选了 overwrite，则覆盖统一库
     if (!destExists || overwrite) {
       await mkdir(path.dirname(destDir), { recursive: true })
       await cp(sourceDir, destDir, { recursive: true })
     }
 
-    // 2. 清理原 Agent 目录下的真实目录，以便让 Magpie 后续建立链接
+    // 2. 清理原 Agent 目录下的独立实体目录，以便 Magpie 创建 Junction
     await rm(sourceDir, { recursive: true, force: true })
 
     // 3. 触发 Magpie library sync
     const syncRes = await syncMagpieLibrary()
 
+    const actionText = !destExists
+      ? '已迁入统一库并建立链接'
+      : overwrite
+        ? '已覆盖统一库并建立链接'
+        : '已安全接入统一库并建立链接（保留库中现有版本）'
+
     return {
       success: true,
       message: syncRes.success
-        ? `已迁移「${skillName}」到 Magpie 统一库并完成分发 (${syncRes.message})`
-        : `已迁移「${skillName}」到 Magpie 统一库，但自动分发提示: ${syncRes.message}`,
+        ? `「${skillName}」${actionText} (${syncRes.message})`
+        : `「${skillName}」${actionText}，但分发提示: ${syncRes.message}`,
     }
   } catch (err) {
     return {
