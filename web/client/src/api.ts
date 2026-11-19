@@ -94,6 +94,33 @@ export interface InspectResult {
 
 export type SyncMode = 'copy' | 'symlink'
 
+export interface MagpieJunction {
+  agentKey: string
+  linkPath: string
+  targetPath: string
+  skillName: string
+}
+
+export interface MagpieStatus {
+  detected: boolean
+  libraryPath: string | null
+  displayPath: string | null
+  managedSkills: string[]
+  version: string | null
+  gatewayOnline: boolean
+  junctions: MagpieJunction[]
+  cliAvailable: boolean
+}
+
+export interface MigratableSkill {
+  agentKey: string
+  agentLabel: string
+  skillName: string
+  path: string
+  displayPath: string
+  existsInMagpieLibrary: boolean
+}
+
 export interface AgentTarget {
   id: string
   label: string
@@ -104,6 +131,8 @@ export interface AgentTarget {
   parentExists: boolean
   exists: boolean
   isCrossEnv: boolean
+  isMagpieLibrary?: boolean
+  magpieManaged?: boolean
 }
 
 export interface SkillSyncResult {
@@ -120,6 +149,7 @@ export interface TargetSyncResult {
   displayPath: string
   error?: string
   skills: SkillSyncResult[]
+  magpieDistribution?: string
 }
 
 export interface InstallPayload {
@@ -204,6 +234,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }).then((r) => r.results),
+
+  getMagpieStatus: () => request<MagpieStatus>('/api/magpie/status'),
+  refreshMagpie: () => request<MagpieStatus>('/api/magpie/refresh', { method: 'POST' }),
+  syncMagpie: () => request<{ success: boolean; message: string }>('/api/magpie/sync', { method: 'POST' }),
+  listMigratableSkills: () => request<{ skills: MigratableSkill[] }>('/api/magpie/migratable').then((r) => r.skills),
+  migrateSkillToMagpie: (payload: { agentKey: string; skillName: string; overwrite?: boolean }) =>
+    request<{ success: boolean; message: string }>('/api/magpie/migrate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 
   inspectSkill: (payload: { source: string; skill?: string }) =>
     request<InspectResult>('/api/skills/inspect', { method: 'POST', body: JSON.stringify(payload) }),

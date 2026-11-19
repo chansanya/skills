@@ -6,6 +6,13 @@ import { HOST, PORT, REPO_ROOT, initRepoRoot } from './config.js'
 import { HttpError } from './errors.js'
 import { importArchive, importFolder, uploadMiddleware } from './import.js'
 import { inspectSkill, installInspected, installSkill, validateInstall } from './install.js'
+import {
+  getMagpieStatus,
+  invalidateMagpieCache,
+  migrateSkillToMagpie,
+  scanMigratableSkills,
+  syncMagpieLibrary,
+} from './magpie.js'
 import { analyzeRepository, installRepositorySkills } from './repository.js'
 import { searchSkills } from './search.js'
 import { addFavorite, listFavorites, removeFavorite } from './favorites.js'
@@ -176,6 +183,38 @@ app.get('/api/agents/targets', async (_req, res) => {
 app.post('/api/agents/sync', async (req, res) => {
   const request = await validateAgentSync(req.body)
   res.json({ results: await syncToAgents(request) })
+})
+
+app.get('/api/magpie/status', async (_req, res) => {
+  res.json(await getMagpieStatus())
+})
+
+app.post('/api/magpie/refresh', async (_req, res) => {
+  invalidateMagpieCache()
+  res.json(await getMagpieStatus(true))
+})
+
+app.post('/api/magpie/sync', async (_req, res) => {
+  res.json(await syncMagpieLibrary())
+})
+
+app.get('/api/magpie/migratable', async (_req, res) => {
+  res.json({ skills: await scanMigratableSkills() })
+})
+
+app.post('/api/magpie/migrate', async (req, res) => {
+  const { agentKey, skillName, overwrite } = req.body ?? {}
+  if (!agentKey || typeof agentKey !== 'string') {
+    throw new HttpError(400, '缺少 agentKey 参数')
+  }
+  if (!skillName || typeof skillName !== 'string') {
+    throw new HttpError(400, '缺少 skillName 参数')
+  }
+  const result = await migrateSkillToMagpie(agentKey, skillName, overwrite === true)
+  if (!result.success) {
+    throw new HttpError(400, result.message)
+  }
+  res.json(result)
 })
 
 app.use('/api', (_req, res) => {

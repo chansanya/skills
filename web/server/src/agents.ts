@@ -6,6 +6,7 @@ import path from 'node:path'
 import { REPO_ROOT } from './config.js'
 import { badRequest, HttpError } from './errors.js'
 import { assertNoSymlinks, atomicReplace, exists, isInside } from './fsutil.js'
+import { getMagpieStatus, syncMagpieLibrary } from './magpie.js'
 import { skillDirs } from './skills.js'
 
 export type SyncMode = 'copy' | 'symlink'
@@ -20,6 +21,8 @@ export interface AgentTarget {
   parentExists: boolean
   exists: boolean
   isCrossEnv: boolean
+  isMagpieLibrary?: boolean
+  magpieManaged?: boolean
 }
 
 export interface SkillSyncResult {
@@ -36,6 +39,7 @@ export interface TargetSyncResult {
   displayPath: string
   error?: string
   skills: SkillSyncResult[]
+  magpieDistribution?: string
 }
 
 interface TargetItem {
@@ -45,6 +49,7 @@ interface TargetItem {
   path: string
   displayPath: string
   isCrossEnv: boolean
+  isMagpieLibrary?: boolean
 }
 
 interface SyncRequest {
@@ -272,8 +277,43 @@ function buildAllPresets(): AgentTarget[] {
   return targets
 }
 
-export async function listTargets(): Promise<AgentTarget[]> {
+async function buildAllPresetsWithMagpie(): Promise<AgentTarget[]> {
   const presets = buildAllPresets()
+  try {
+    const magpie = await getMagpieStatus()
+    if (magpie.detected && magpie.libraryPath) {
+      const isWSL = checkIsWSL()
+      const magpieTarget: AgentTarget = {
+        id: 'magpie:library',
+        label: '🐦 Magpie 统一库',
+        env: 'host',
+        envLabel: 'Magpie',
+        path: magpie.libraryPath,
+        displayPath: magpie.displayPath || '~/.config/magpie/library/skills',
+        parentExists: true,
+        exists: true,
+        isCrossEnv: isWSL,
+        isMagpieLibrary: true,
+      }
+      presets.unshift(magpieTarget)
+
+      // 标记哪些 Agent 目录中已有 Magpie Junction
+      const managedKeys = new Set(magpie.junctions.map((j) => j.agentKey))
+      for (const p of presets) {
+        const rawKey = p.id.replace(/^(wsl|host):/, '')
+        if (managedKeys.has(rawKey)) {
+          p.magpieManaged = true
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return presets
+}
+
+export async function listTargets(): Promise<AgentTarget[]> {
+  const presets = await buildAllPresetsWithMagpie()
   return Promise.all(
     presets.map(async (p) => ({
       ...p,
@@ -406,12 +446,12 @@ export async function validateAgentSync(body: unknown): Promise<SyncRequest> {
   if (!Array.isArray(input.targets) || !input.targets.length) throw badRequest('请至少选择一个目标目录')
   if (input.targets.length > MAX_TARGETS) throw badRequest('目标目录过多')
 
-  const presets = buildAllPresets()
+  const presets = await buildAllPresetsWithMagpie()
   const targets: TargetItem[] = []
   for (const t of input.targets) {
     if (typeof t !== 'string') throw badRequest('目标目录格式错误')
     const preset = presets.find((p) => p.id === t)
-    const target = preset
+    const target: TargetItem = preset
       ? {
           id: preset.id,
           label: preset.label,
@@ -419,6 +459,7 @@ export async function validateAgentSync(body: unknown): Promise<SyncRequest> {
           path: preset.path,
           displayPath: preset.displayPath,
           isCrossEnv: preset.isCrossEnv,
+          isMagpieLibrary: preset.isMagpieLibrary,
         }
       : resolveCustomTarget(t)
 
@@ -443,16 +484,21 @@ async function assertRealInsideAllowed(dir: string): Promise<void> {
   throw new Error('目标目录不在允许的用户主目录内')
 }
 
-async function syncSkill(skill: string, root: string, isCrossEnv: boolean, req: SyncRequest): Promise<SkillSyncResult> {
+async function syncSkill(
+  skill: string,
+  root: string,
+  isCrossEnv: boolean,
+  req: SyncRequest,
+  isMagpieLibrary = false,
+): Promise<SkillSyncResult> {
   const source = path.join(REPO_ROOT, skill)
   const dest = path.join(root, skill)
   try {
     if (!req.overwrite && (await exists(dest))) return { skill, status: 'skipped', message: '已存在，未覆盖' }
     await assertNoSymlinks(source)
 
-    // 对于跨环境（从 WSL 写入 Windows NTFS 宿主目录），若使用 symlink，Windows 原生进程可能无法解析 Linux 绝对路径，
-    // 因此跨环境时自动使用物理复制以确保 Windows 原生 Agent 100% 兼容。
-    const effectiveMode = isCrossEnv && req.mode === 'symlink' ? 'copy' : req.mode
+    // Magpie 统一库必须采用物理复制以确保后续 Junction 正常工作；跨环境也自动转为物理复制。
+    const effectiveMode = isMagpieLibrary || (isCrossEnv && req.mode === 'symlink') ? 'copy' : req.mode
 
     const result = await atomicReplace(dest, req.overwrite, (staged) =>
       effectiveMode === 'symlink'
@@ -461,7 +507,9 @@ async function syncSkill(skill: string, root: string, isCrossEnv: boolean, req: 
     )
 
     let msg = result === 'replaced' ? '已覆盖' : '已同步'
-    if (isCrossEnv && req.mode === 'symlink') {
+    if (isMagpieLibrary) {
+      msg += ' (Magpie 统一库)'
+    } else if (isCrossEnv && req.mode === 'symlink') {
       msg += ' (跨主机已转复制)'
     }
     return { skill, status: 'synced', message: msg }
@@ -476,7 +524,12 @@ export async function syncToAgents(req: SyncRequest): Promise<TargetSyncResult[]
   syncing = true
   try {
     const results: TargetSyncResult[] = []
+    let hasMagpieLibrary = false
+
     for (const target of req.targets) {
+      if (target.isMagpieLibrary) {
+        hasMagpieLibrary = true
+      }
       const entry: TargetSyncResult = {
         id: target.id,
         label: target.label,
@@ -494,9 +547,25 @@ export async function syncToAgents(req: SyncRequest): Promise<TargetSyncResult[]
         continue
       }
       for (const skill of req.skills) {
-        entry.skills.push(await syncSkill(skill, target.path, target.isCrossEnv, req))
+        entry.skills.push(await syncSkill(skill, target.path, target.isCrossEnv, req, target.isMagpieLibrary))
       }
     }
+
+    // 若同步了 Magpie 统一库，自动触发 Magpie library sync 进行 Agent 分发
+    if (hasMagpieLibrary) {
+      try {
+        const dist = await syncMagpieLibrary()
+        const magpieEntry = results.find((r) => r.id === 'magpie:library')
+        if (magpieEntry) {
+          magpieEntry.magpieDistribution = dist.success
+            ? `✓ 已自动触发 Magpie 分发 (${dist.message})`
+            : `⚠ Magpie 自动分发提示: ${dist.message}`
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     return results
   } finally {
     syncing = false
